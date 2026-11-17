@@ -1,4 +1,4 @@
-name: Build ZexxaKernel Blossom (Non-KSU)
+name: Build Madara Blossom (Non-KSU)
 
 on:
   workflow_dispatch:
