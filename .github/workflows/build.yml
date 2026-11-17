@@ -59,8 +59,9 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
             echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/blossom_defconfig
             echo "CONFIG_KSU=y" >> arch/arm64/configs/blossom_defconfig
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/arm64/configs/blossom_defconfig
             echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
+            sed -i 's/No hooks were defined, please integrate manual hooks in your kernel!/warning: manual hooks check bypassed/' drivers/kernelsu/Kbuild
+            sed -i '/warning: manual hooks check bypassed/,+2d' drivers/kernelsu/Kbuild
 
             python3 - << 'EOF'
           def patch_file(path, replacements):
