@@ -182,7 +182,7 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
-            Image.gz-dtb
+            Image.gz-dtb 2>&1 | tee build.log || { echo "=== RINGKASAN ERROR ==="; grep -n "error:" build.log; exit 1; }
 
       - name: Pack AnyKernel3
         run: |
