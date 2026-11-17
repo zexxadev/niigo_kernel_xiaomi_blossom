@@ -134,21 +134,96 @@ jobs:
 
             SUSFS_PATCH="$PWD/susfs419/patches/lge-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
 
-            ls -la "$SUSFS_PATCH"
+            if [ ! -f "$SUSFS_PATCH" ]; then
+              echo "ERROR: File patch SUSFS tidak ditemukan!"
+              exit 1
+            fi
 
-            # 3. Apply SUSFS patch.
-            # Skip cmdline.c because the LG implementation in the
-            # patch is incompatible with the MTK Blossom kernel.
-            patch -p1 \
-              --no-backup-if-mismatch \
-              -F3 \
-              --exclude='cmdline.c' \
-              < "$SUSFS_PATCH" || true
+            ls -lh "$SUSFS_PATCH"
 
-            # Restore original MTK cmdline implementation.
+            # 3. Filter patch: kecualikan fs/proc/cmdline.c.
+            # Patch cmdline dari SUSFS menggunakan implementasi LG,
+            # sedangkan kernel Blossom menggunakan implementasi MTK.
+            echo "Filtering SUSFS patch..."
+
+            python3 - "$SUSFS_PATCH" << 'PY'
+          import re
+          import sys
+          import subprocess
+
+          patch_file = sys.argv[1]
+
+          with open(
+              patch_file,
+              "r",
+              encoding="utf-8",
+              errors="replace"
+          ) as f:
+              patch_text = f.read()
+
+          # Pisahkan patch berdasarkan setiap file diff.
+          chunks = re.split(
+              r"(?=^diff --git )",
+              patch_text,
+              flags=re.MULTILINE
+          )
+
+          filtered_chunks = []
+          excluded = False
+
+          for chunk in chunks:
+              if not chunk.strip():
+                  continue
+
+              first_line = chunk.splitlines()[0]
+
+              # Lewati hanya patch fs/proc/cmdline.c.
+              if re.match(
+                  r"^diff --git a/fs/proc/cmdline\.c b/fs/proc/cmdline\.c$",
+                  first_line
+              ):
+                  print("Excluded: fs/proc/cmdline.c")
+                  excluded = True
+                  continue
+
+              filtered_chunks.append(chunk)
+
+          if not excluded:
+              print(
+                  "PERINGATAN: Patch fs/proc/cmdline.c "
+                  "tidak ditemukan dalam daftar diff."
+              )
+
+          filtered_patch = "\n".join(filtered_chunks)
+
+          if not filtered_patch.strip():
+              sys.exit("ERROR: Patch SUSFS kosong setelah filtering.")
+
+          # Terapkan patch yang sudah difilter.
+          result = subprocess.run(
+              [
+                  "patch",
+                  "-p1",
+                  "--no-backup-if-mismatch",
+                  "-F3"
+              ],
+              input=filtered_patch,
+              text=True
+          )
+
+          if result.returncode != 0:
+              sys.exit(
+                  "ERROR: Penerapan patch SUSFS gagal. "
+                  "Periksa pesan dan file .rej."
+              )
+
+          print("SUSFS patch applied successfully.")
+          PY
+
+            # Pastikan file cmdline tetap menggunakan versi MTK.
             git checkout -- fs/proc/cmdline.c
 
-            # Report rejected hunks.
+            # 4. Tampilkan file reject jika ada.
             if find . -name "*.rej" \
               -not -path "./susfs419/*" | grep -q .; then
 
@@ -157,21 +232,24 @@ jobs:
               find . -name "*.rej" \
                 -not -path "./susfs419/*" \
                 -exec head -n 80 {} +
+
             fi
 
-            # 4. Check required SUSFS files.
+            # 5. Validasi file SUSFS.
             for f in \
               fs/susfs.c \
               include/linux/susfs.h \
               include/linux/susfs_def.h; do
 
-              [ -f "$f" ] || {
+              if [ ! -f "$f" ]; then
                 echo "ERROR: $f tidak ditemukan setelah patch SUSFS"
                 exit 1
-              }
+              fi
+
+              echo "OK: $f ditemukan"
             done
 
-            # Check required SUSFS constants.
+            # 6. Check required SUSFS constants.
             for c in \
               CMD_SUSFS_ADD_SUS_PATH_LOOP \
               CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS \
@@ -186,13 +264,13 @@ jobs:
 
             echo "susfs_def.h: semua CMD_SUSFS_* ditemukan"
 
-            # Ensure susfs.o is compiled.
+            # 7. Ensure susfs.o is compiled.
             if ! grep -q "susfs.o" fs/Makefile; then
               echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> fs/Makefile
               echo "Menambahkan susfs.o ke fs/Makefile"
             fi
 
-            # 5. Check inline hooks.
+            # 8. Check inline hooks.
             echo "=== CEK HOOK SUSFS INLINE ==="
 
             for pair in \
@@ -215,7 +293,7 @@ jobs:
               fi
             done
 
-            # 6. Compatibility patch for Linux 4.19.
+            # 9. Compatibility patch for Linux 4.19.
             python3 - << 'EOF'
           import os, re
 
@@ -257,9 +335,9 @@ jobs:
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
 
-            # 7. Enable KSU + SUSFS configuration.
-            # CMDLINE spoof is intentionally disabled because
-            # this kernel's cmdline implementation is incompatible.
+            # 10. Enable KSU + SUSFS configuration.
+            # CMDLINE spoof sengaja tidak diaktifkan karena
+            # implementasi cmdline kernel Blossom berbeda.
             cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
           CONFIG_OVERLAY_FS=y
           CONFIG_KSU=y
