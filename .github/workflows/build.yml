@@ -388,6 +388,33 @@ jobs:
 
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
+          # 9b. Fix implicit declaration of filename_lookup di fs/open.c (SUSFS OPEN_REDIRECT)
+            python3 - << 'EOF'
+          import re
+
+          # Pastikan filename_lookup tidak static di fs/namei.c
+          with open('fs/namei.c', 'r') as f:
+              namei = f.read()
+          namei_new, n = re.subn(r'\bstatic\s+(int\s+filename_lookup\s*\()', r'\1', namei)
+          if n:
+              with open('fs/namei.c', 'w') as f:
+                  f.write(namei_new)
+              print("Removed static from filename_lookup in fs/namei.c OK")
+
+          # Tambahkan deklarasi filename_lookup di fs/open.c
+          with open('fs/open.c', 'r') as f:
+              open_c = f.read()
+          decl = (
+              '#include "internal.h"\n'
+              'extern int filename_lookup(int dfd, struct filename *name, '
+              'unsigned flags, struct path *path, struct path *root);\n'
+          )
+          if 'extern int filename_lookup(' not in open_c:
+              open_c = re.sub(r'(#include\s+[<"])', decl + r'\1', open_c, count=1)
+              with open('fs/open.c', 'w') as f:
+                  f.write(open_c)
+              print("Added filename_lookup declaration in fs/open.c OK")
+          EOF
 
             # 10. Enable KSU + SUSFS configuration
             # SUS_MOUNT dinonaktifkan karena API mount tidak kompatibel.
