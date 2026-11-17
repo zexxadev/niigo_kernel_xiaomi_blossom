@@ -217,9 +217,10 @@ jobs:
                   f.write(before + decl + after)
               print("Patched ksu_handle_faccessat in fs/open.c OK")
 
-          # 4c. fs/stat.c (ksu_handle_stat)
+          # 4c. fs/stat.c (ksu_handle_stat & ksu_handle_vfs_fstat)
           with open('fs/stat.c', 'r') as f:
               stat_c = f.read()
+
           if 'ksu_handle_stat' not in stat_c:
               idx = stat_c.rindex('int vfs_statx(')
               before, after = stat_c[:idx], stat_c[idx:]
@@ -229,9 +230,23 @@ jobs:
                   1
               )
               decl = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif\n\n'
-              with open('fs/stat.c', 'w') as f:
-                  f.write(before + decl + after)
+              stat_c = before + decl + after
               print("Patched ksu_handle_stat in fs/stat.c OK")
+
+          if 'ksu_handle_vfs_fstat' not in stat_c:
+              idx = stat_c.rindex('int vfs_fstat(')
+              before, after = stat_c[:idx], stat_c[idx:]
+              after = after.replace(
+                  '\t\tfdput(f);',
+                  '\t\tfdput(f);\n#ifdef CONFIG_KSU_SUSFS\n\t\tksu_handle_vfs_fstat(fd, &stat->size);\n#endif',
+                  1
+              )
+              decl_fstat = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr);\n#endif\n\n'
+              stat_c = before + decl_fstat + after
+              print("Patched ksu_handle_vfs_fstat in fs/stat.c OK")
+
+          with open('fs/stat.c', 'w') as f:
+              f.write(stat_c)
 
           # 4d. fs/read_write.c (ksu_handle_sys_read tanpa ksu_init_rc_hook)
           with open('fs/read_write.c', 'r') as f:
