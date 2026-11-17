@@ -208,7 +208,7 @@ jobs:
           sed -i 's/device.name3=.*/device.name3=angelica/g' anykernel.sh
           sed -i 's/device.name4=.*/device.name4=cattail/g' anykernel.sh
           sed -i 's/supported.versions=.*/supported.versions=/g' anykernel.sh
-          sed -i 's|block=.*|block=auto;|g' anykernel.sh
+          sed -i 's|block=.*|block=/dev/block/by-name/boot;|g' anykernel.sh
           sed -i 's/is_slot_device=.*/is_slot_device=0;/g' anykernel.sh
 
           cat << 'EOF' > ramdisk/init.madara.rc
