@@ -30,7 +30,7 @@ jobs:
       - name: Apply Performance & GPU OC Patches
         run: |
           python3 - << 'EOF'
-          import glob
+          import glob, re
 
           # 1. Matikan GENTLE_FAIR_SLEEPERS di scheduler (UI & Touch lebih instan)
           feat_file = 'kernel/sched/features.h'
@@ -51,6 +51,28 @@ jobs:
                   with open(path, 'w') as f:
                       f.write(gpu)
                   print(f"Patched GPU OC 730MHz in {path} OK")
+
+          # 3. CPU Overclock +300 MHz (Big: 2.0 -> 2.3 GHz, Little: 1.5 -> 1.8 GHz)
+          # 3a. Patch tabel OPP di Device Tree (satuan Hz)
+          for dts in glob.glob('arch/arm64/boot/dts/mediatek/*.dts*', recursive=True):
+              with open(dts, 'r') as f:
+                  d_txt = f.read()
+              new_d = d_txt.replace('<2000000000>', '<2300000000>').replace('<1500000000>', '<1800000000>')
+              if new_d != d_txt:
+                  with open(dts, 'w') as f:
+                      f.write(new_d)
+                  print(f"Patched CPU OPP DTS (+300MHz) in {dts} OK")
+
+          # 3b. Patch tabel DVFS cpufreq MediaTek (satuan kHz)
+          for cpu_f in glob.glob('drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]', recursive=True):
+              with open(cpu_f, 'r') as f:
+                  c_txt = f.read()
+              new_c = re.sub(r'\b2000000\b', '2300000', c_txt)
+              new_c = re.sub(r'\b1500000\b', '1800000', new_c)
+              if new_c != c_txt:
+                  with open(cpu_f, 'w') as f:
+                      f.write(new_c)
+                  print(f"Patched CPU DVFS table (+300MHz) in {cpu_f} OK")
           EOF
 
       - name: Setup Variant (${{ matrix.variant }})
@@ -105,7 +127,6 @@ jobs:
           with open(task_mmu, 'r') as f:
               mmu_code = f.read()
 
-          # Cari definisi INODE_STATE_SUS_KSTAT dari hasil copy susfs4ksu
           kstat_def = ''
           for h_path in ['include/linux/susfs_def.h', 'include/linux/fs.h']:
               if os.path.exists(h_path):
@@ -134,6 +155,36 @@ jobs:
               with open(task_mmu, 'w') as f:
                   f.write(mmu_code)
               print(f"Patched fs/proc/task_mmu.c OK ({kstat_def})")
+
+          # 3. kernel/sys.c (ksu_handle_setresuid untuk SUSFS Inline Hook)
+          sys_c = 'kernel/sys.c'
+          with open(sys_c, 'r') as f:
+              sys_code = f.read()
+
+          if 'ksu_handle_setresuid' not in sys_code:
+              decl_setresuid = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  'extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);\n'
+                  '#endif\n\n'
+              )
+              hook_setresuid = (
+                  '\n#ifdef CONFIG_KSU_SUSFS\n'
+                  '\tksu_handle_setresuid(ruid, euid, suid);\n'
+                  '#endif\n'
+              )
+              target_sig = 'long __sys_setresuid(' if 'long __sys_setresuid(' in sys_code else 'SYSCALL_DEFINE3(setresuid,'
+              idx = sys_code.index(target_sig)
+              before, after = sys_code[:idx], sys_code[idx:]
+              after = after.replace('{', '{' + hook_setresuid, 1)
+              with open(sys_c, 'w') as f:
+                  f.write(before + decl_setresuid + after)
+              print(f"Patched ksu_handle_setresuid in {sys_c} ({target_sig}) OK")
+
+          inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
+          if os.path.exists(inline_mk):
+              print("=== ISI inline_hook_check.mk ===")
+              with open(inline_mk, 'r') as f:
+                  print(f.read())
           EOF
 
             # 3. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
