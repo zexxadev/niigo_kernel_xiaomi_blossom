@@ -73,10 +73,11 @@ jobs:
               find . -name "*.rej" -exec head -n 50 {} +
             fi
 
-            # Pastikan field SUSFS masuk ke struct task_struct di include/linux/sched.h
+            # Pastikan field & header SUSFS masuk ke file yang ter-reject MTK
             python3 - << 'EOF'
           import re
 
+          # 1. include/linux/sched.h
           sched_h = 'include/linux/sched.h'
           with open(sched_h, 'r') as f:
               content = f.read()
@@ -98,6 +99,18 @@ jobs:
               with open(sched_h, 'w') as f:
                   f.write(content)
               print("Patched struct task_struct in include/linux/sched.h OK")
+
+          # 2. fs/proc/task_mmu.c
+          task_mmu = 'fs/proc/task_mmu.c'
+          with open(task_mmu, 'r') as f:
+              mmu_code = f.read()
+
+          if 'susfs_def.h' not in mmu_code:
+              inc_block = '#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n'
+              mmu_code = mmu_code.replace('#include <linux/fs.h>', '#include <linux/fs.h>\n' + inc_block, 1)
+              with open(task_mmu, 'w') as f:
+                  f.write(mmu_code)
+              print("Patched include susfs_def.h in fs/proc/task_mmu.c OK")
           EOF
 
             # 3. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
