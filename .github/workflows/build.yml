@@ -107,7 +107,8 @@ jobs:
 
           if 'susfs_def.h' not in mmu_code:
               inc_block = '#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n'
-              mmu_code = mmu_code.replace('#include <linux/fs.h>', '#include <linux/fs.h>\n' + inc_block, 1)
+              mmu_code, n = re.subn(r'(#include\s+<[^>]+>\n)', r'\1' + inc_block, mmu_code, count=1)
+              assert n == 1, "Gagal menyisipkan header di fs/proc/task_mmu.c"
               with open(task_mmu, 'w') as f:
                   f.write(mmu_code)
               print("Patched include susfs_def.h in fs/proc/task_mmu.c OK")
