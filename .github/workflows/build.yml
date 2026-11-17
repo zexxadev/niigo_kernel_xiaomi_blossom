@@ -36,32 +36,29 @@ jobs:
           feat_file = 'kernel/sched/features.h'
           with open(feat_file, 'r') as f:
               feat = f.read()
-          if 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)' in feat:
-              feat = feat.replace('SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', 1)
+          feat_new, n1 = re.subn(r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat)
+          if n1:
               with open(feat_file, 'w') as f:
-                  f.write(feat)
+                  f.write(feat_new)
               print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
+          else:
+              print("INFO GENTLE_FAIR_SLEEPERS:", [l.strip() for l in feat.splitlines() if 'GENTLE_FAIR_SLEEPERS' in l])
 
           # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
-          for path in glob.glob('drivers/misc/mediatek/base/power/**/mtk_gpufreq*.c', recursive=True):
+          gpu_patched = False
+          for path in glob.glob('drivers/misc/mediatek/**/*gpufreq*.[ch]', recursive=True):
               with open(path, 'r') as f:
                   gpu = f.read()
-              if 'GPUOP(650000,' in gpu:
-                  gpu = gpu.replace('GPUOP(650000,', 'GPUOP(730000,')
+              gpu_new, n2 = re.subn(r'(GPUOP\s*\(\s*)650000(\s*,)', r'\g<1>730000\g<2>', gpu)
+              if n2:
                   with open(path, 'w') as f:
-                      f.write(gpu)
-                  print(f"Patched GPU OC 730MHz in {path} OK")
+                      f.write(gpu_new)
+                  print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
+                  gpu_patched = True
+          if not gpu_patched:
+              print("PERINGATAN: Macro GPUOP(650000) tidak ditemukan di driver gpufreq!")
 
           # 3. CPU Overclock +300 MHz (Big: 2.0 -> 2.3 GHz, Little: 1.5 -> 1.8 GHz)
-          for dts in glob.glob('arch/arm64/boot/dts/mediatek/*.dts*', recursive=True):
-              with open(dts, 'r') as f:
-                  d_txt = f.read()
-              new_d = d_txt.replace('<2000000000>', '<2300000000>').replace('<1500000000>', '<1800000000>')
-              if new_d != d_txt:
-                  with open(dts, 'w') as f:
-                      f.write(new_d)
-                  print(f"Patched CPU OPP DTS (+300MHz) in {dts} OK")
-
           for cpu_f in glob.glob('drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]', recursive=True):
               with open(cpu_f, 'r') as f:
                   c_txt = f.read()
