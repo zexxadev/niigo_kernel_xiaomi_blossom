@@ -113,10 +113,10 @@ jobs:
                '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif')
           ])
 
-          # 6. fs/namespace.c (backport path_umount jika belum ada)
+          # 6. fs/namespace.c (backport path_umount kompatibel dengan Kbuild internal.h)
           with open('fs/namespace.c', 'r') as f:
               ns = f.read()
-          if 'path_umount(' not in ns:
+          if 'int path_umount(' not in ns:
               umount_code = """#ifdef CONFIG_KSU
           static int can_umount(const struct path *path, int flags)
           {
