@@ -78,15 +78,15 @@ jobs:
                   f.write(before + extern_decl + '\n\n' + after)
               print(f"Patched {path} OK")
 
-          # 1. fs/exec.c (menggunakan regex agar tahan beda indentasi/kurung kurawal)
+          # 1. fs/exec.c (Linux 4.19+ menggunakan __do_execve_file)
           with open('fs/exec.c', 'r') as f:
               exec_c = f.read()
-          sig_exec = 'static int do_execveat_common('
-          assert sig_exec in exec_c, "do_execveat_common tidak ditemukan di fs/exec.c"
+          sig_exec = 'static int __do_execve_file('
+          assert sig_exec in exec_c, "__do_execve_file tidak ditemukan di fs/exec.c"
           idx = exec_c.rindex(sig_exec)
           before, after = exec_c[:idx], exec_c[idx:]
           pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
-          assert re.search(pattern, after), "Blok IS_ERR(filename) tidak ditemukan di do_execveat_common"
+          assert re.search(pattern, after), "Blok IS_ERR(filename) tidak ditemukan di __do_execve_file"
           ksu_exec_hook = (
               r'\1\n\n#ifdef CONFIG_KSU\n'
               r'\tif (unlikely(ksu_execveat_hook))\n'
