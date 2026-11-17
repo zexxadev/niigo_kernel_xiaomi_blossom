@@ -56,8 +56,10 @@ jobs:
       - name: Setup Variant (${{ matrix.variant }})
         run: |
           if [ "${{ matrix.variant }}" == "KSUN" ]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
+            echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/blossom_defconfig
             echo "CONFIG_KSU=y" >> arch/arm64/configs/blossom_defconfig
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/arm64/configs/blossom_defconfig
             echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
 
             python3 - << 'EOF'
