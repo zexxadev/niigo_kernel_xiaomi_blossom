@@ -225,11 +225,11 @@ jobs:
                   f.write(before + decl + after)
               print("Patched ksu_handle_faccessat in fs/open.c OK")
 
-          # 4c. fs/stat.c (ksu_handle_stat & ksu_handle_vfs_fstat)
+          # 4c. fs/stat.c (ksu_handle_stat & ksu_handle_vfs_fstat di SYSCALL_DEFINE2(newfstat))
           with open('fs/stat.c', 'r') as f:
               stat_c = f.read()
 
-          if 'ksu_handle_stat' not in stat_c:
+          if 'ksu_handle_stat' not in stat_c and 'int vfs_statx(' in stat_c:
               idx = stat_c.rindex('int vfs_statx(')
               before, after = stat_c[:idx], stat_c[idx:]
               after = after.replace(
@@ -242,12 +242,14 @@ jobs:
               print("Patched ksu_handle_stat in fs/stat.c OK")
 
           if 'ksu_handle_vfs_fstat' not in stat_c:
-              idx = stat_c.rindex('int vfs_fstat(')
+              sig_newfstat = 'SYSCALL_DEFINE2(newfstat,'
+              idx = stat_c.index(sig_newfstat)
               before, after = stat_c[:idx], stat_c[idx:]
-              after = after.replace(
-                  '\t\tfdput(f);',
-                  '\t\tfdput(f);\n#ifdef CONFIG_KSU_SUSFS\n\t\tksu_handle_vfs_fstat(fd, &stat->size);\n#endif',
-                  1
+              after = re.sub(
+                  r'(int\s+error\s*=\s*vfs_fstat\s*\(\s*fd\s*,\s*&stat\s*\)\s*;)',
+                  r'\1\n#ifdef CONFIG_KSU_SUSFS\n\tif (!error)\n\t\tksu_handle_vfs_fstat(fd, &stat.size);\n#endif',
+                  after,
+                  count=1
               )
               decl_fstat = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr);\n#endif\n\n'
               stat_c = before + decl_fstat + after
@@ -277,6 +279,27 @@ jobs:
               with open('fs/read_write.c', 'w') as f:
                   f.write(before + decl_read + after)
               print("Patched ksu_handle_sys_read in fs/read_write.c OK")
+
+          # 4e. fs/dcache.c (tambal hunk __d_lookup_rcu yang ter-reject MTK)
+          with open('fs/dcache.c', 'r') as f:
+              dcache_c = f.read()
+          if 'susfs_def.h' not in dcache_c:
+              dcache_c = re.sub(r'(#include\s+[<"])', '#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n' + r'\1', dcache_c, count=1)
+          if 'INODE_STATE_SUS_PATH' not in dcache_c:
+              target_dc = 'if (dentry_cmp(dentry, str, hashlen_len(hashlen)) != 0)\n\t\t\t\tcontinue;'
+              patch_dc = (
+                  target_dc + '\n'
+                  '#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n'
+                  '\t\t\tif (dentry->d_inode && unlikely(dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {\n'
+                  '\t\t\t\tcontinue;\n'
+                  '\t\t\t}\n'
+                  '#endif'
+              )
+              if target_dc in dcache_c:
+                  dcache_c = dcache_c.replace(target_dc, patch_dc, 1)
+                  print("Patched INODE_STATE_SUS_PATH in fs/dcache.c OK")
+          with open('fs/dcache.c', 'w') as f:
+              f.write(dcache_c)
 
           inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
           if os.path.exists(inline_mk):
