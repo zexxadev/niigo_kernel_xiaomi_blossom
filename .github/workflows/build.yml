@@ -52,16 +52,46 @@ jobs:
           cp out/arch/arm64/boot/Image.gz-dtb anykernel/
 
           cd anykernel
-          sed -i 's/kernel.string=.*/kernel.string=ZexxaKernel-Blossom-NonKSU/g' anykernel.sh
+
+          # 1. Buat Banner TWRP / OrangeFox
+          cat << 'EOF' > banner
+            __  __           _                 _  __                    _ 
+           |  \/  | __ _  __| | __ _ _ __ __ _| |/ /___ _ __ _ __   ___| |
+           | |\/| |/ _` |/ _` |/ _` | '__/ _` | ' // _ \ '__| '_ \ / _ \ |
+           | |  | | (_| | (_| | (_| | | | (_| | . \  __/ |  | | | |  __/ |
+           |_|  |_|\__,_|\__,_|\__,_|_|  \__,_|_|\_\___|_|  |_| |_|\___|_|
+                                                                          
+             madaraKernel 4.19.325 | Unified Blossom | by @zexxadev
+          EOF
+
+          # 2. Konfigurasi Device & Hapus Limit Versi Android
+          sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 by @zexxadev/g' anykernel.sh
           sed -i 's/do.devicecheck=.*/do.devicecheck=1/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=dandelion/g' anykernel.sh
           sed -i 's/device.name2=.*/device.name2=blossom/g' anykernel.sh
           sed -i 's/device.name3=.*/device.name3=angelica/g' anykernel.sh
           sed -i 's/device.name4=.*/device.name4=cattail/g' anykernel.sh
+          sed -i 's/supported.versions=.*/supported.versions=/g' anykernel.sh
           sed -i 's|block=.*|block=auto;|g' anykernel.sh
           sed -i 's/is_slot_device=.*/is_slot_device=0;/g' anykernel.sh
 
-          ZIP_NAME="ZexxaKernel-Blossom-NonKSU-$(date +%Y%m%d-%H%M).zip"
+          # 3. Suntik Runtime Tweak (VM RAM 2GB + TCP BBR + I/O) ke Ramdisk
+          cat << 'EOF' > ramdisk/init.madara.rc
+          on property:sys.boot_completed=1
+              write /proc/sys/vm/swappiness 120
+              write /proc/sys/vm/vfs_cache_pressure 100
+              write /proc/sys/vm/page-cluster 0
+              write /proc/sys/net/core/default_qdisc fq
+              write /proc/sys/net/ipv4/tcp_congestion_control bbr
+              write /sys/block/mmcblk0/queue/scheduler noop
+              write /sys/block/mmcblk0/queue/read_ahead_kb 128
+          EOF
+          chmod 0750 ramdisk/init.madara.rc
+
+          # Pastikan init.rc nge-load init.madara.rc
+          sed -i '/## AnyKernel methods/i import_initrc /init.madara.rc;' anykernel.sh
+
+          ZIP_NAME="madaraKernel-blossom-NonKSU-$(date +%Y%m%d).zip"
           zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
