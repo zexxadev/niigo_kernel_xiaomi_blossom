@@ -363,9 +363,10 @@ jobs:
               write /proc/sys/vm/vfs_cache_pressure 100
               write /proc/sys/vm/page-cluster 0
 
-              # Network Gaming (TCP BBR + FQ)
+              # Network Gaming (TCP BBR + FQ + Fast Open)
               write /proc/sys/net/core/default_qdisc fq
-              write /sys/net/ipv4/tcp_congestion_control bbr
+              write /proc/sys/net/ipv4/tcp_congestion_control bbr
+              write /proc/sys/net/ipv4/tcp_fastopen 3
 
               # Fast eMMC I/O & Disable SPI CRC
               write /sys/block/mmcblk0/queue/scheduler noop
@@ -376,6 +377,11 @@ jobs:
               write /proc/ppm/policy_status "1 0"
               write /proc/ppm/policy_status "2 0"
               write /proc/ppm/policy_status "3 0"
+
+              # Instant Wakeup & Schedutil Fast Ramp-Up (untuk CPU OC 2.3GHz)
+              write /sys/power/sync_on_suspend 0
+              write /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us 500
+              write /sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us 2000
           EOF
           chmod 0750 ramdisk/init.madara.rc
 
