@@ -2,9 +2,6 @@ name: Build ZexxaKernel Blossom (Non-KSU)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - niigo_yoka
 
 jobs:
   build:
