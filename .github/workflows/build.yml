@@ -53,7 +53,6 @@ jobs:
                   print(f"Patched GPU OC 730MHz in {path} OK")
 
           # 3. CPU Overclock +300 MHz (Big: 2.0 -> 2.3 GHz, Little: 1.5 -> 1.8 GHz)
-          # 3a. Patch tabel OPP di Device Tree (satuan Hz)
           for dts in glob.glob('arch/arm64/boot/dts/mediatek/*.dts*', recursive=True):
               with open(dts, 'r') as f:
                   d_txt = f.read()
@@ -63,7 +62,6 @@ jobs:
                       f.write(new_d)
                   print(f"Patched CPU OPP DTS (+300MHz) in {dts} OK")
 
-          # 3b. Patch tabel DVFS cpufreq MediaTek (satuan kHz)
           for cpu_f in glob.glob('drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]', recursive=True):
               with open(cpu_f, 'r') as f:
                   c_txt = f.read()
@@ -95,7 +93,7 @@ jobs:
               find . -name "*.rej" -exec head -n 50 {} +
             fi
 
-            # Pastikan field & header SUSFS masuk ke file yang ter-reject MTK
+            # Pastikan field, header, & inline hook SUSFS masuk ke file yang ter-reject MTK
             python3 - << 'EOF'
           import os, re
 
@@ -179,6 +177,78 @@ jobs:
               with open(sys_c, 'w') as f:
                   f.write(before + decl_setresuid + after)
               print(f"Patched ksu_handle_setresuid in {sys_c} ({target_sig}) OK")
+
+          # 4. Pastikan semua inline hook SUSFS terpasang jika ada hunk MTK yang reject
+          # 4a. fs/exec.c (ksu_handle_execveat)
+          with open('fs/exec.c', 'r') as f:
+              exec_c = f.read()
+          if 'ksu_handle_execveat' not in exec_c:
+              sig_exec = 'static int __do_execve_file('
+              idx = exec_c.rindex(sig_exec)
+              before, after = exec_c[:idx], exec_c[idx:]
+              pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
+              ksu_exec_hook = (
+                  r'\1\n\n#ifdef CONFIG_KSU_SUSFS\n'
+                  r'\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
+                  r'#endif'
+              )
+              after = re.sub(pattern, ksu_exec_hook, after, count=1)
+              decl_exec = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
+                  '#endif\n\n'
+              )
+              with open('fs/exec.c', 'w') as f:
+                  f.write(before + decl_exec + after)
+              print("Patched ksu_handle_execveat in fs/exec.c OK")
+
+          # 4b. fs/open.c (ksu_handle_faccessat)
+          with open('fs/open.c', 'r') as f:
+              open_c = f.read()
+          if 'ksu_handle_faccessat' not in open_c:
+              idx = open_c.rindex('long do_faccessat(')
+              before, after = open_c[:idx], open_c[idx:]
+              after = after.replace(
+                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
+                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU_SUSFS\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif',
+                  1
+              )
+              decl = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\n'
+              with open('fs/open.c', 'w') as f:
+                  f.write(before + decl + after)
+              print("Patched ksu_handle_faccessat in fs/open.c OK")
+
+          # 4c. fs/stat.c (ksu_handle_stat)
+          with open('fs/stat.c', 'r') as f:
+              stat_c = f.read()
+          if 'ksu_handle_stat' not in stat_c:
+              idx = stat_c.rindex('int vfs_statx(')
+              before, after = stat_c[:idx], stat_c[idx:]
+              after = after.replace(
+                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
+                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU_SUSFS\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif',
+                  1
+              )
+              decl = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif\n\n'
+              with open('fs/stat.c', 'w') as f:
+                  f.write(before + decl + after)
+              print("Patched ksu_handle_stat in fs/stat.c OK")
+
+          # 4d. drivers/input/input.c (ksu_handle_input_handle_event)
+          with open('drivers/input/input.c', 'r') as f:
+              inp_c = f.read()
+          if 'ksu_handle_input_handle_event' not in inp_c:
+              idx = inp_c.rindex('void input_event(')
+              before, after = inp_c[:idx], inp_c[idx:]
+              after = after.replace(
+                  '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
+                  '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU_SUSFS\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif',
+                  1
+              )
+              decl = '#ifdef CONFIG_KSU_SUSFS\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif\n\n'
+              with open('drivers/input/input.c', 'w') as f:
+                  f.write(before + decl + after)
+              print("Patched ksu_handle_input_handle_event in drivers/input/input.c OK")
 
           inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
           if os.path.exists(inline_mk):
@@ -295,7 +365,7 @@ jobs:
 
               # Network Gaming (TCP BBR + FQ)
               write /proc/sys/net/core/default_qdisc fq
-              write /proc/sys/net/ipv4/tcp_congestion_control bbr
+              write /sys/net/ipv4/tcp_congestion_control bbr
 
               # Fast eMMC I/O & Disable SPI CRC
               write /sys/block/mmcblk0/queue/scheduler noop
