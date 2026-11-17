@@ -32,7 +32,7 @@ jobs:
           python3 - << 'EOF'
           import glob, re
 
-          # 1. Matikan GENTLE_FAIR_SLEEPERS di scheduler (UI & Touch lebih instan)
+          # 1. Matikan GENTLE_FAIR_SLEEPERS & aktifkan NEXT_BUDDY (UI & Touch lebih instan)
           feat_file = 'kernel/sched/features.h'
           with open(feat_file, 'r') as f:
               feat = f.read()
@@ -40,9 +40,17 @@ jobs:
           if not n1:
               feat_new, n1 = re.subn(r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat)
           if n1:
+              print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
+
+          feat_new, n_nb = re.subn(r'(#define\s+SCHED_FEAT_NEXT_BUDDY\s+)0\b', r'\g<1>1', feat_new)
+          if not n_nb:
+              feat_new, n_nb = re.subn(r'SCHED_FEAT\(\s*NEXT_BUDDY\s*,\s*false\s*\)', 'SCHED_FEAT(NEXT_BUDDY, true)', feat_new)
+          if n_nb:
+              print("Patched SCHED_FEAT_NEXT_BUDDY OK")
+
+          if n1 or n_nb:
               with open(feat_file, 'w') as f:
                   f.write(feat_new)
-              print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
 
           # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
           gpu_patched = False
@@ -402,6 +410,12 @@ jobs:
               write /sys/power/sync_on_suspend 0
               write /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us 500
               write /sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us 2000
+
+              # Touch Responsive & CPU Touch Boost (MTK Perfmgr + Schedutil)
+              write /sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq 1800000
+              write /sys/devices/system/cpu/cpufreq/schedutil/hispeed_load 75
+              write /proc/perfmgr/tchbst/user/usrtch 1
+              write /proc/perfmgr/boost_ctrl/eas_ctrl/perfserv_ta_uclamp_min 15
           EOF
           chmod 0750 ramdisk/init.madara.rc
 
