@@ -58,33 +58,85 @@ jobs:
           if [ "${{ matrix.variant }}" == "RSKSU" ]; then
             # Setup ReSukiSU
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-            
+
             # Bypass error TP hooks untuk kernel Non-GKI / Legacy 4.19
             sed -i '/TP hooks are incompatible/s/\$(error/\$(warning/' drivers/kernelsu/Kbuild
-            
+
+            # Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
+            python3 - << 'EOF'
+          import os, re
+
+          pkg_obs = 'drivers/kernelsu/manager/pkg_observer.c'
+          if os.path.exists(pkg_obs):
+              with open(pkg_obs, 'r') as f:
+                  code = f.read()
+              code = code.replace('TWA_RESUME', 'true')
+              if '.handle_inode_event' in code:
+                  wrapper = (
+                      'static int ksu_handle_event_419(struct fsnotify_group *group, struct inode *inode, '
+                      'u32 mask, const void *data, int data_type, const unsigned char *file_name, '
+                      'u32 cookie, struct fsnotify_iter_info *iter_info)\n'
+                      '{\n'
+                      '\tstruct qstr qname = { .name = file_name, .len = file_name ? strlen(file_name) : 0 };\n'
+                      '\treturn ksu_handle_inode_event(NULL, mask, inode, inode, file_name ? &qname : NULL, cookie);\n'
+                      '}\n\n'
+                      'static const struct fsnotify_ops'
+                  )
+                  code = code.replace('static const struct fsnotify_ops', wrapper, 1)
+                  code = re.sub(r'\.handle_inode_event\s*=\s*ksu_handle_inode_event', '.handle_event = ksu_handle_event_419', code)
+              with open(pkg_obs, 'w') as f:
+                  f.write(code)
+              print("Patched pkg_observer.c for Linux 4.19 OK")
+          EOF
+
             echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/blossom_defconfig
             echo "CONFIG_KSU=y" >> arch/arm64/configs/blossom_defconfig
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/arm64/configs/blossom_defconfig
             echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
-          fi
 
-          python3 - << 'EOF'
+            python3 - << 'EOF'
           import re
 
           def patch_file(path, func_sig, extern_decl, hook_target, hook_code):
               with open(path, 'r') as f:
                   content = f.read()
-              if func_sig not in content:
-                  return
+              assert func_sig in content, f"Fungsi tidak ditemukan di {path}: {func_sig}"
               idx = content.rindex(func_sig)
-              before = content[:idx]
-              after = content[idx:]
-              if hook_target not in after:
-                  return
+              before, after = content[:idx], content[idx:]
+              assert hook_target in after, f"Target hook tidak ditemukan di {path}"
               after = after.replace(hook_target, hook_code, 1)
               with open(path, 'w') as f:
                   f.write(before + extern_decl + '\n\n' + after)
               print(f"Patched {path} OK")
 
+          # 1. fs/exec.c
+          with open('fs/exec.c', 'r') as f:
+              exec_c = f.read()
+          sig_exec = 'static int __do_execve_file('
+          idx = exec_c.rindex(sig_exec)
+          before, after = exec_c[:idx], exec_c[idx:]
+          pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
+          ksu_exec_hook = (
+              r'\1\n\n#ifdef CONFIG_KSU\n'
+              r'\tif (unlikely(ksu_execveat_hook))\n'
+              r'\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
+              r'\telse\n'
+              r'\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n'
+              r'#endif'
+          )
+          after = re.sub(pattern, ksu_exec_hook, after, count=1)
+          decl_exec = (
+              '#ifdef CONFIG_KSU\n'
+              'extern bool ksu_execveat_hook __read_mostly;\n'
+              'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
+              'extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
+              '#endif\n\n'
+          )
+          with open('fs/exec.c', 'w') as f:
+              f.write(before + decl_exec + after)
+          print("Patched fs/exec.c OK")
+
+          # 2. fs/open.c
           patch_file(
               'fs/open.c',
               'long do_faccessat(',
@@ -92,6 +144,8 @@ jobs:
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif'
           )
+
+          # 3. fs/read_write.c
           patch_file(
               'fs/read_write.c',
               'ssize_t vfs_read(',
@@ -99,6 +153,8 @@ jobs:
               '\tssize_t ret;',
               '\tssize_t ret;\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_vfs_read(&file, &buf, &count, &pos);\n#endif'
           )
+
+          # 4. fs/stat.c
           patch_file(
               'fs/stat.c',
               'int vfs_statx(',
@@ -106,7 +162,58 @@ jobs:
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif'
           )
+
+          # 5. drivers/input/input.c
+          patch_file(
+              'drivers/input/input.c',
+              'void input_event(',
+              '#ifdef CONFIG_KSU\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif',
+              '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
+              '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif'
+          )
+
+          # 6. fs/namespace.c
+          with open('fs/namespace.c', 'r') as f:
+              ns = f.read()
+          if 'int path_umount(' not in ns:
+              umount_code = """#ifdef CONFIG_KSU
+          static int can_umount(const struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+          		return -EINVAL;
+          	if (!may_mount())
+          		return -EPERM;
+          	if (path->dentry != path->mnt->mnt_root)
+          		return -EINVAL;
+          	if (!check_mnt(mnt))
+          		return -EINVAL;
+          	if (mnt->mnt.mnt_flags & MNT_LOCKED)
+          		return -EINVAL;
+          	if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
+          		return -EPERM;
+          	return 0;
+          }
+
+          int path_umount(struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	int ret = can_umount(path, flags);
+          	if (!ret)
+          		ret = do_umount(mnt, flags);
+          	dput(path->dentry);
+          	mntput_no_expire(mnt);
+          	return ret;
+          }
+          #endif
+
+          SYSCALL_DEFINE2(umount,"""
+              ns = ns.replace('SYSCALL_DEFINE2(umount,', umount_code, 1)
+              with open('fs/namespace.c', 'w') as f:
+                  f.write(ns)
+              print("Patched fs/namespace.c OK")
           EOF
+          fi
 
       - name: Build Kernel
         run: |
