@@ -388,7 +388,7 @@ jobs:
 
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
-          # 9b. Fix implicit declaration of filename_lookup di fs/open.c (SUSFS OPEN_REDIRECT)
+          # 9b. Fix implicit declaration of filename_lookup di fs/open.c & fs/stat.c (SUSFS)
             python3 - << 'EOF'
           import re
 
@@ -401,20 +401,21 @@ jobs:
                   f.write(namei_new)
               print("Removed static from filename_lookup in fs/namei.c OK")
 
-          # Tambahkan deklarasi filename_lookup SETELAH semua #include di fs/open.c
-          with open('fs/open.c', 'r') as f:
-              open_c = f.read()
+          # Tambahkan deklarasi filename_lookup SETELAH semua #include di fs/open.c & fs/stat.c
           decl = (
               '\nextern int filename_lookup(int dfd, struct filename *name, '
               'unsigned flags, struct path *path, struct path *root);\n'
           )
-          if 'extern int filename_lookup(' not in open_c:
-              includes = list(re.finditer(r'^#include\s+[<"].*?[>"]', open_c, flags=re.MULTILINE))
-              last_inc_end = includes[-1].end()
-              open_c = open_c[:last_inc_end] + decl + open_c[last_inc_end:]
-              with open('fs/open.c', 'w') as f:
-                  f.write(open_c)
-              print("Added filename_lookup declaration after includes in fs/open.c OK")
+          for target in ['fs/open.c', 'fs/stat.c']:
+              with open(target, 'r') as f:
+                  code = f.read()
+              if 'extern int filename_lookup(' not in code:
+                  includes = list(re.finditer(r'^#include\s+[<"].*?[>"]', code, flags=re.MULTILINE))
+                  last_inc_end = includes[-1].end()
+                  code = code[:last_inc_end] + decl + code[last_inc_end:]
+                  with open(target, 'w') as f:
+                      f.write(code)
+                  print(f"Added filename_lookup declaration after includes in {target} OK")
           EOF
 
             # 10. Enable KSU + SUSFS configuration
