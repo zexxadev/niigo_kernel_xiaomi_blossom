@@ -1,4 +1,3 @@
-
 name: Build madaraKernel Blossom (Dual-Variant)
 
 on:
@@ -31,34 +30,44 @@ jobs:
       - name: Apply Performance & GPU OC Patches
         run: |
           python3 - << 'EOF'
-          import glob, re
+          import glob
+          import re
 
-          # 1. Matikan GENTLE_FAIR_SLEEPERS & aktifkan NEXT_BUDDY
+          # 1. Matikan GENTLE_FAIR_SLEEPERS dan aktifkan NEXT_BUDDY
           feat_file = 'kernel/sched/features.h'
+
           with open(feat_file, 'r') as f:
               feat = f.read()
 
           feat_new, n1 = re.subn(
               r'(#define\s+SCHED_FEAT_GENTLE_FAIR_SLEEPERS\s+)1\b',
-              r'\g<1>0', feat
+              r'\g<1>0',
+              feat
           )
+
           if not n1:
               feat_new, n1 = re.subn(
                   r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)',
-                  'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat
+                  'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)',
+                  feat
               )
+
           if n1:
               print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
 
           feat_new, n_nb = re.subn(
               r'(#define\s+SCHED_FEAT_NEXT_BUDDY\s+)0\b',
-              r'\g<1>1', feat_new
+              r'\g<1>1',
+              feat_new
           )
+
           if not n_nb:
               feat_new, n_nb = re.subn(
                   r'SCHED_FEAT\(\s*NEXT_BUDDY\s*,\s*false\s*\)',
-                  'SCHED_FEAT(NEXT_BUDDY, true)', feat_new
+                  'SCHED_FEAT(NEXT_BUDDY, true)',
+                  feat_new
               )
+
           if n_nb:
               print("Patched SCHED_FEAT_NEXT_BUDDY OK")
 
@@ -68,10 +77,12 @@ jobs:
 
           # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
           gpu_patched = False
+
           gpu_files = glob.glob(
               'drivers/misc/mediatek/**/*gpufreq*.[ch]',
               recursive=True
           )
+
           target_gpu = [
               p for p in gpu_files
               if 'mt6765' in p or 'mt6762' in p
@@ -81,20 +92,28 @@ jobs:
               with open(path, 'r') as f:
                   gpu = f.read()
 
-              gpu_new, n2 = re.subn(r'\b650000\b', '730000', gpu)
+              gpu_new, n2 = re.subn(
+                  r'\b650000\b',
+                  '730000',
+                  gpu
+              )
+
               if n2:
                   with open(path, 'w') as f:
                       f.write(gpu_new)
+
                   print(
                       f"Patched GPU OC 730MHz in {path} "
                       f"({n2} entries) OK"
                   )
+
                   gpu_patched = True
 
           if not gpu_patched:
               print(
                   "PERINGATAN: Angka 650000 tidak ditemukan, "
-                  "daftar file gpufreq:", target_gpu
+                  "daftar file gpufreq:",
+                  target_gpu
               )
 
           # 3. CPU Overclock +300 MHz
@@ -111,6 +130,7 @@ jobs:
               if new_c != c_txt:
                   with open(cpu_f, 'w') as f:
                       f.write(new_c)
+
                   print(
                       f"Patched CPU DVFS table (+300MHz) "
                       f"in {cpu_f} OK"
@@ -123,6 +143,7 @@ jobs:
 
             # 1. Setup ReSukiSU
             KSU_REF="d5e9e025b8b49155f8014684d64c91742b465f65"
+
             curl -LSs \
               "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
               | bash -s "$KSU_REF"
@@ -132,18 +153,17 @@ jobs:
               https://github.com/fabiannabil1/susfs-4.19-nongki.git \
               susfs419
 
-            SUSFS_PATCH="$PWD/susfs419/patches/lge-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
+            SUSFS_PATCH="$PWD/susfs419/patches/lge-sm-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
 
             if [ ! -f "$SUSFS_PATCH" ]; then
               echo "ERROR: File patch SUSFS tidak ditemukan!"
+              find susfs419/patches -name "0002-susfs-v2.3.0-4.19.patch"
               exit 1
             fi
 
             ls -lh "$SUSFS_PATCH"
 
-            # 3. Filter patch: kecualikan fs/proc/cmdline.c.
-            # Patch cmdline dari SUSFS menggunakan implementasi LG,
-            # sedangkan kernel Blossom menggunakan implementasi MTK.
+            # 3. Filter patch SUSFS
             echo "Filtering SUSFS patch..."
 
             python3 - "$SUSFS_PATCH" << 'PY'
@@ -161,7 +181,6 @@ jobs:
           ) as f:
               patch_text = f.read()
 
-          # Pisahkan patch berdasarkan setiap file diff.
           chunks = re.split(
               r"(?=^diff --git )",
               patch_text,
@@ -169,37 +188,72 @@ jobs:
           )
 
           filtered_chunks = []
-          excluded = False
+          excluded_cmdline = False
+          excluded_mount = False
 
           for chunk in chunks:
               if not chunk.strip():
                   continue
 
-              first_line = chunk.splitlines()[0]
+              lines = chunk.splitlines(keepends=True)
+              first_line = lines[0].strip()
 
-              # Lewati hanya patch fs/proc/cmdline.c.
+              # Blossom memakai implementasi cmdline MTK.
               if re.match(
                   r"^diff --git a/fs/proc/cmdline\.c b/fs/proc/cmdline\.c$",
                   first_line
               ):
+                  excluded_cmdline = True
                   print("Excluded: fs/proc/cmdline.c")
-                  excluded = True
                   continue
 
-              filtered_chunks.append(chunk)
+              # Lewati hunk vfs_create_mount yang tidak kompatibel.
+              if re.match(
+                  r"^diff --git a/fs/namespace\.c b/fs/namespace\.c$",
+                  first_line
+              ):
+                  output = []
+                  skip_hunk = False
 
-          if not excluded:
-              print(
-                  "PERINGATAN: Patch fs/proc/cmdline.c "
-                  "tidak ditemukan dalam daftar diff."
+                  for line in lines:
+                      if line.startswith("@@ "):
+                          skip_hunk = (
+                              "vfs_create_mount" in line
+                          )
+
+                          if skip_hunk:
+                              excluded_mount = True
+                              print(
+                                  "Excluded incompatible hunk: "
+                                  "fs/namespace.c / vfs_create_mount"
+                              )
+
+                      if not skip_hunk:
+                          output.append(line)
+
+                  filtered_chunks.append("".join(output))
+
+              else:
+                  filtered_chunks.append(chunk)
+
+          if not excluded_cmdline:
+              sys.exit(
+                  "ERROR: Hunk fs/proc/cmdline.c tidak ditemukan."
+              )
+
+          if not excluded_mount:
+              sys.exit(
+                  "ERROR: Hunk vfs_create_mount tidak ditemukan. "
+                  "Periksa versi patch SUSFS."
               )
 
           filtered_patch = "\n".join(filtered_chunks)
 
           if not filtered_patch.strip():
-              sys.exit("ERROR: Patch SUSFS kosong setelah filtering.")
+              sys.exit(
+                  "ERROR: Patch SUSFS kosong setelah filtering."
+              )
 
-          # Terapkan patch yang sudah difilter.
           result = subprocess.run(
               [
                   "patch",
@@ -214,16 +268,13 @@ jobs:
           if result.returncode != 0:
               sys.exit(
                   "ERROR: Penerapan patch SUSFS gagal. "
-                  "Periksa pesan dan file .rej."
+                  "Periksa file .rej."
               )
 
           print("SUSFS patch applied successfully.")
           PY
 
-            # Pastikan file cmdline tetap menggunakan versi MTK.
-            git checkout -- fs/proc/cmdline.c
-
-            # 4. Tampilkan file reject jika ada.
+            # 4. Tampilkan file reject jika ada
             if find . -name "*.rej" \
               -not -path "./susfs419/*" | grep -q .; then
 
@@ -233,9 +284,11 @@ jobs:
                 -not -path "./susfs419/*" \
                 -exec head -n 80 {} +
 
+              echo "ERROR: Ada patch yang ditolak."
+              exit 1
             fi
 
-            # 5. Validasi file SUSFS.
+            # 5. Validasi file SUSFS
             for f in \
               fs/susfs.c \
               include/linux/susfs.h \
@@ -249,7 +302,7 @@ jobs:
               echo "OK: $f ditemukan"
             done
 
-            # 6. Check required SUSFS constants.
+            # 6. Check required SUSFS constants
             for c in \
               CMD_SUSFS_ADD_SUS_PATH_LOOP \
               CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS \
@@ -264,13 +317,13 @@ jobs:
 
             echo "susfs_def.h: semua CMD_SUSFS_* ditemukan"
 
-            # 7. Ensure susfs.o is compiled.
+            # 7. Ensure susfs.o is compiled
             if ! grep -q "susfs.o" fs/Makefile; then
               echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> fs/Makefile
               echo "Menambahkan susfs.o ke fs/Makefile"
             fi
 
-            # 8. Check inline hooks.
+            # 8. Check inline hooks
             echo "=== CEK HOOK SUSFS INLINE ==="
 
             for pair in \
@@ -293,9 +346,10 @@ jobs:
               fi
             done
 
-            # 9. Compatibility patch for Linux 4.19.
+            # 9. Compatibility patch for Linux 4.19
             python3 - << 'EOF'
-          import os, re
+          import os
+          import re
 
           pkg_obs = 'drivers/kernelsu/manager/pkg_observer.c'
 
@@ -335,9 +389,8 @@ jobs:
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
 
-            # 10. Enable KSU + SUSFS configuration.
-            # CMDLINE spoof sengaja tidak diaktifkan karena
-            # implementasi cmdline kernel Blossom berbeda.
+            # 10. Enable KSU + SUSFS configuration
+            # SUS_MOUNT dinonaktifkan karena API mount tidak kompatibel.
             cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
           CONFIG_OVERLAY_FS=y
           CONFIG_KSU=y
@@ -345,7 +398,7 @@ jobs:
           # CONFIG_KSU_TRACEPOINT_HOOK is not set
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_SUS_PATH=y
-          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          # CONFIG_KSU_SUSFS_SUS_MOUNT is not set
           CONFIG_KSU_SUSFS_SUS_KSTAT=y
           CONFIG_KSU_SUSFS_SPOOF_UNAME=y
           CONFIG_KSU_SUSFS_ENABLE_LOG=y
@@ -368,15 +421,23 @@ jobs:
           make -j$(nproc --all) O=out ARCH=arm64 blossom_defconfig
 
           if [ "${{ matrix.variant }}" == "RSKSU" ]; then
-            grep -q "CONFIG_KSU=y" out/.config || {
+
+            grep -q "^CONFIG_KSU=y" out/.config || {
               echo "ERROR: CONFIG_KSU=y gagal aktif di .config!"
               exit 1
             }
 
-            grep -q "CONFIG_KSU_SUSFS=y" out/.config || {
+            grep -q "^CONFIG_KSU_SUSFS=y" out/.config || {
               echo "ERROR: CONFIG_KSU_SUSFS=y gagal aktif di .config!"
               exit 1
             }
+
+            if grep -q "^CONFIG_KSU_SUSFS_SUS_MOUNT=y" out/.config; then
+              echo "ERROR: SUS_MOUNT masih aktif!"
+              exit 1
+            fi
+
+            echo "OK: SUS_MOUNT dinonaktifkan."
           fi
 
           set -o pipefail
