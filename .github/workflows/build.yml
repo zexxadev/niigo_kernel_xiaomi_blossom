@@ -61,6 +61,18 @@ jobs:
             echo "CONFIG_KSU=y" >> arch/arm64/configs/blossom_defconfig
             echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
             sed -i '/No hooks were defined, please integrate manual hooks in your kernel!/s/\$(error/\$(warning/' drivers/kernelsu/Kbuild
+            python3 - << 'EOF'
+          import glob, re
+          for path in glob.glob('drivers/kernelsu/**/*', recursive=True):
+              if path.endswith(('.h', '.c', 'Kbuild', 'Makefile')):
+                  with open(path, 'r', errors='ignore') as f:
+                      txt = f.read()
+                  new_txt = re.sub(r'(\b(?:KSU_)?(?:API|MIN_MANAGER)_VERSION\b\s*(?:[:?]?=|\s)\s*)6\b', r'\g<1>5', txt)
+                  if new_txt != txt:
+                      with open(path, 'w') as f:
+                          f.write(new_txt)
+                      print(f"Downgraded KSU protocol 6 -> 5 in {path}")
+          EOF
 
             python3 - << 'EOF'
           import re
