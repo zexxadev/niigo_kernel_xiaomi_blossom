@@ -171,6 +171,7 @@ jobs:
             grep -q "CONFIG_KSU=y" out/.config || (echo "ERROR: CONFIG_KSU=y gagal aktif di .config!" && exit 1)
           fi
 
+          set -o pipefail
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -182,7 +183,11 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
-            Image.gz-dtb 2>&1 | tee build.log || { echo "=== RINGKASAN ERROR ==="; grep -n "error:" build.log; exit 1; }
+            Image.gz-dtb 2>&1 | tee build.log || {
+              echo "=== RINGKASAN ERROR ==="
+              grep -iE "error:|undefined symbol|undefined reference" build.log | tail -n 25
+              exit 1
+            }
 
       - name: Pack AnyKernel3
         run: |
