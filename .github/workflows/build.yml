@@ -81,13 +81,31 @@ jobs:
                '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_execveat_hook))\n\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\telse\n\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif')
           ])
 
-          # 2. fs/open.c
-          patch_file('fs/open.c', [
-              ('long do_faccessat(',
-               '#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\nlong do_faccessat('),
-              ('\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
-               '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif')
-          ])
+          # 2. fs/open.c (patch spesifik di dalam fungsi do_faccessat)
+          with open('fs/open.c', 'r') as f:
+              open_c = f.read()
+
+          decl_target = 'long do_faccessat('
+          assert decl_target in open_c, "do_faccessat tidak ditemukan di fs/open.c"
+          open_c = open_c.replace(
+              decl_target,
+              '#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\nlong do_faccessat(',
+              1
+          )
+
+          idx = open_c.index('long do_faccessat(')
+          before, after = open_c[:idx], open_c[idx:]
+          hook_target = '\tunsigned int lookup_flags = LOOKUP_FOLLOW;'
+          assert hook_target in after, "lookup_flags tidak ditemukan di dalam do_faccessat"
+          after = after.replace(
+              hook_target,
+              '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif',
+              1
+          )
+
+          with open('fs/open.c', 'w') as f:
+              f.write(before + after)
+          print("Patched fs/open.c OK")
 
           # 3. fs/read_write.c
           patch_file('fs/read_write.c', [
