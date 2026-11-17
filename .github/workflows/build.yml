@@ -1,0 +1,74 @@
+name: Build ZexxaKernel Blossom (Non-KSU)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - niigo_yoka
+
+jobs:
+  build:
+    name: Compile Kernel 4.19
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex git libssl-dev libelf-dev python3 zip
+
+      - name: Clone Proton Clang
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Build Kernel (blossom_defconfig)
+        run: |
+          export PATH="$PWD/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="Zexxa"
+          export KBUILD_BUILD_HOST="GitHubActions"
+
+          make -j$(nproc --all) O=out ARCH=arm64 blossom_defconfig
+
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            Image.gz-dtb
+
+      - name: Pack AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
+          cp out/arch/arm64/boot/Image.gz-dtb anykernel/
+
+          cd anykernel
+          sed -i 's/kernel.string=.*/kernel.string=ZexxaKernel-Blossom-NonKSU/g' anykernel.sh
+          sed -i 's/do.devicecheck=.*/do.devicecheck=1/g' anykernel.sh
+          sed -i 's/device.name1=.*/device.name1=dandelion/g' anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=blossom/g' anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=angelica/g' anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=cattail/g' anykernel.sh
+          sed -i 's|block=.*|block=auto;|g' anykernel.sh
+          sed -i 's/is_slot_device=.*/is_slot_device=0;/g' anykernel.sh
+
+          ZIP_NAME="ZexxaKernel-Blossom-NonKSU-$(date +%Y%m%d-%H%M).zip"
+          zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
