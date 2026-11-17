@@ -234,22 +234,6 @@ jobs:
                   f.write(before + decl + after)
               print("Patched ksu_handle_stat in fs/stat.c OK")
 
-          # 4d. drivers/input/input.c (ksu_handle_input_handle_event)
-          with open('drivers/input/input.c', 'r') as f:
-              inp_c = f.read()
-          if 'ksu_handle_input_handle_event' not in inp_c:
-              idx = inp_c.rindex('void input_event(')
-              before, after = inp_c[:idx], inp_c[idx:]
-              after = after.replace(
-                  '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
-                  '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU_SUSFS\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif',
-                  1
-              )
-              decl = '#ifdef CONFIG_KSU_SUSFS\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif\n\n'
-              with open('drivers/input/input.c', 'w') as f:
-                  f.write(before + decl + after)
-              print("Patched ksu_handle_input_handle_event in drivers/input/input.c OK")
-
           inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
           if os.path.exists(inline_mk):
               print("=== ISI inline_hook_check.mk ===")
