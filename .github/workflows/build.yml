@@ -63,11 +63,12 @@ jobs:
             sed -i '/No hooks were defined, please integrate manual hooks in your kernel!/s/\$(error/\$(warning/' drivers/kernelsu/Kbuild
 
             python3 - << 'EOF'
+          import re
+
           def patch_file(path, func_sig, extern_decl, hook_target, hook_code):
               with open(path, 'r') as f:
                   content = f.read()
               assert func_sig in content, f"Fungsi tidak ditemukan di {path}: {func_sig}"
-              # Cari definisi fungsi asli (kemunculan terakhir, melewati forward declaration)
               idx = content.rindex(func_sig)
               before = content[:idx]
               after = content[idx:]
@@ -77,14 +78,34 @@ jobs:
                   f.write(before + extern_decl + '\n\n' + after)
               print(f"Patched {path} OK")
 
-          # 1. fs/exec.c
-          patch_file(
-              'fs/exec.c',
-              'static int do_execveat_common(',
-              '#ifdef CONFIG_KSU\nextern bool ksu_execveat_hook __read_mostly;\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif',
-              '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);',
-              '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_execveat_hook))\n\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\telse\n\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif'
+          # 1. fs/exec.c (menggunakan regex agar tahan beda indentasi/kurung kurawal)
+          with open('fs/exec.c', 'r') as f:
+              exec_c = f.read()
+          sig_exec = 'static int do_execveat_common('
+          assert sig_exec in exec_c, "do_execveat_common tidak ditemukan di fs/exec.c"
+          idx = exec_c.rindex(sig_exec)
+          before, after = exec_c[:idx], exec_c[idx:]
+          pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
+          assert re.search(pattern, after), "Blok IS_ERR(filename) tidak ditemukan di do_execveat_common"
+          ksu_exec_hook = (
+              r'\1\n\n#ifdef CONFIG_KSU\n'
+              r'\tif (unlikely(ksu_execveat_hook))\n'
+              r'\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
+              r'\telse\n'
+              r'\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n'
+              r'#endif'
           )
+          after = re.sub(pattern, ksu_exec_hook, after, count=1)
+          decl_exec = (
+              '#ifdef CONFIG_KSU\n'
+              'extern bool ksu_execveat_hook __read_mostly;\n'
+              'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
+              'extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
+              '#endif\n\n'
+          )
+          with open('fs/exec.c', 'w') as f:
+              f.write(before + decl_exec + after)
+          print("Patched fs/exec.c OK")
 
           # 2. fs/open.c
           patch_file(
