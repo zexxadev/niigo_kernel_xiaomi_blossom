@@ -538,3 +538,12 @@ CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
 # CONFIG_DEBUG_INFO is not set
 # CONFIG_LLVM_POLLY is not set
 CONFIG_INIT_STACK_NONE=y
+
+# --- Paket 1: 300Hz Tick Rate & Fast I/O ---
+CONFIG_HZ_300=y
+# CONFIG_HZ_100 is not set
+# CONFIG_HZ_250 is not set
+# CONFIG_HZ_1000 is not set
+# CONFIG_AUDIT is not set
+# CONFIG_AUDITSYSCALL is not set
+# CONFIG_MMC_PARANOID_SD_INIT is not set
