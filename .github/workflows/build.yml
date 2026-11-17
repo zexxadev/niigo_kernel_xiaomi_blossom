@@ -60,7 +60,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
             
             # 2. Clone & Apply ReSuSFS Patches (Ahmed-Alnassif/ReSuSFS)
-            git clone --depth=1 https://github.com/Ahmed-Alnassif/ReSuSFS.git -b main resusfs
+            git clone --depth=1 https://github.com/Ahmed-Alnassif/ReSuSFS.git resusfs
             
             # Menyalin patch kernel ReSuSFS sesuai struktur source kernel 4.19
             if [ -d "resusfs/kernel_patches" ]; then
