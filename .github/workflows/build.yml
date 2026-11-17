@@ -75,7 +75,7 @@ jobs:
 
             # Pastikan field & header SUSFS masuk ke file yang ter-reject MTK
             python3 - << 'EOF'
-          import re
+          import os, re
 
           # 1. include/linux/sched.h
           sched_h = 'include/linux/sched.h'
@@ -105,13 +105,35 @@ jobs:
           with open(task_mmu, 'r') as f:
               mmu_code = f.read()
 
-          if 'susfs_def.h' not in mmu_code:
-              inc_block = '#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n'
-              mmu_code, n = re.subn(r'(#include\s+<[^>]+>\n)', r'\1' + inc_block, mmu_code, count=1)
-              assert n == 1, "Gagal menyisipkan header di fs/proc/task_mmu.c"
+          # Cari definisi INODE_STATE_SUS_KSTAT dari hasil copy susfs4ksu
+          kstat_def = ''
+          for h_path in ['include/linux/susfs_def.h', 'include/linux/fs.h']:
+              if os.path.exists(h_path):
+                  with open(h_path, 'r') as hf:
+                      for line in hf:
+                          if 'define INODE_STATE_SUS_KSTAT' in line:
+                              kstat_def = line.strip()
+                              break
+              if kstat_def:
+                  break
+
+          if not kstat_def:
+              kstat_def = '#define INODE_STATE_SUS_KSTAT BIT(24)'
+
+          inc_block = (
+              '#ifdef CONFIG_KSU_SUSFS\n'
+              '#include <linux/susfs_def.h>\n'
+              '#ifndef INODE_STATE_SUS_KSTAT\n'
+              f'{kstat_def}\n'
+              '#endif\n'
+              '#endif\n'
+          )
+
+          if 'INODE_STATE_SUS_KSTAT' not in mmu_code.split('#include')[0]:
+              mmu_code = re.sub(r'(#include\s+[<"])', inc_block + r'\1', mmu_code, count=1)
               with open(task_mmu, 'w') as f:
                   f.write(mmu_code)
-              print("Patched include susfs_def.h in fs/proc/task_mmu.c OK")
+              print(f"Patched fs/proc/task_mmu.c OK ({kstat_def})")
           EOF
 
             # 3. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
