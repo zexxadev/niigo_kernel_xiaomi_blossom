@@ -234,7 +234,7 @@ jobs:
           EOF
           chmod 0750 ramdisk/init.madara.rc
 
-          sed -i '/## AnyKernel methods/i import_initrc /init.madara.rc;' anykernel.sh
+          sed -i '/dump_boot;/a import_initrc /init.madara.rc;' anykernel.sh
 
           ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
           zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
