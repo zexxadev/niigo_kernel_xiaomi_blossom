@@ -1,3 +1,4 @@
+
 name: Build madaraKernel Blossom (Dual-Variant)
 
 on:
@@ -32,19 +33,32 @@ jobs:
           python3 - << 'EOF'
           import glob, re
 
-          # 1. Matikan GENTLE_FAIR_SLEEPERS & aktifkan NEXT_BUDDY (UI & Touch lebih instan)
+          # 1. Matikan GENTLE_FAIR_SLEEPERS & aktifkan NEXT_BUDDY
           feat_file = 'kernel/sched/features.h'
           with open(feat_file, 'r') as f:
               feat = f.read()
-          feat_new, n1 = re.subn(r'(#define\s+SCHED_FEAT_GENTLE_FAIR_SLEEPERS\s+)1\b', r'\g<1>0', feat)
+
+          feat_new, n1 = re.subn(
+              r'(#define\s+SCHED_FEAT_GENTLE_FAIR_SLEEPERS\s+)1\b',
+              r'\g<1>0', feat
+          )
           if not n1:
-              feat_new, n1 = re.subn(r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat)
+              feat_new, n1 = re.subn(
+                  r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)',
+                  'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat
+              )
           if n1:
               print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
 
-          feat_new, n_nb = re.subn(r'(#define\s+SCHED_FEAT_NEXT_BUDDY\s+)0\b', r'\g<1>1', feat_new)
+          feat_new, n_nb = re.subn(
+              r'(#define\s+SCHED_FEAT_NEXT_BUDDY\s+)0\b',
+              r'\g<1>1', feat_new
+          )
           if not n_nb:
-              feat_new, n_nb = re.subn(r'SCHED_FEAT\(\s*NEXT_BUDDY\s*,\s*false\s*\)', 'SCHED_FEAT(NEXT_BUDDY, true)', feat_new)
+              feat_new, n_nb = re.subn(
+                  r'SCHED_FEAT\(\s*NEXT_BUDDY\s*,\s*false\s*\)',
+                  'SCHED_FEAT(NEXT_BUDDY, true)', feat_new
+              )
           if n_nb:
               print("Patched SCHED_FEAT_NEXT_BUDDY OK")
 
@@ -54,72 +68,133 @@ jobs:
 
           # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
           gpu_patched = False
-          gpu_files = glob.glob('drivers/misc/mediatek/**/*gpufreq*.[ch]', recursive=True)
-          target_gpu = [p for p in gpu_files if 'mt6765' in p or 'mt6762' in p] or gpu_files
+          gpu_files = glob.glob(
+              'drivers/misc/mediatek/**/*gpufreq*.[ch]',
+              recursive=True
+          )
+          target_gpu = [
+              p for p in gpu_files
+              if 'mt6765' in p or 'mt6762' in p
+          ] or gpu_files
+
           for path in target_gpu:
               with open(path, 'r') as f:
                   gpu = f.read()
+
               gpu_new, n2 = re.subn(r'\b650000\b', '730000', gpu)
               if n2:
                   with open(path, 'w') as f:
                       f.write(gpu_new)
-                  print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
+                  print(
+                      f"Patched GPU OC 730MHz in {path} "
+                      f"({n2} entries) OK"
+                  )
                   gpu_patched = True
-          if not gpu_patched:
-              print("PERINGATAN: Angka 650000 tidak ditemukan, daftar file gpufreq:", target_gpu)
 
-          # 3. CPU Overclock +300 MHz (Big: 2.0 -> 2.3 GHz, Little: 1.5 -> 1.8 GHz)
-          for cpu_f in glob.glob('drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]', recursive=True):
+          if not gpu_patched:
+              print(
+                  "PERINGATAN: Angka 650000 tidak ditemukan, "
+                  "daftar file gpufreq:", target_gpu
+              )
+
+          # 3. CPU Overclock +300 MHz
+          for cpu_f in glob.glob(
+              'drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]',
+              recursive=True
+          ):
               with open(cpu_f, 'r') as f:
                   c_txt = f.read()
+
               new_c = re.sub(r'\b2000000\b', '2300000', c_txt)
               new_c = re.sub(r'\b1500000\b', '1800000', new_c)
+
               if new_c != c_txt:
                   with open(cpu_f, 'w') as f:
                       f.write(new_c)
-                  print(f"Patched CPU DVFS table (+300MHz) in {cpu_f} OK")
+                  print(
+                      f"Patched CPU DVFS table (+300MHz) "
+                      f"in {cpu_f} OK"
+                  )
           EOF
 
       - name: Setup Variant (${{ matrix.variant }})
         run: |
           if [ "${{ matrix.variant }}" == "RSKSU" ]; then
-            # 1. Setup ReSukiSU (BakaSU), di-pin ke commit yang dipakai port SUSFS v2.3.0 untuk 4.19
-            #    (ReSukiSU main hanya mengikuti SUSFS terbaru, jadi jangan pakai "main")
-            KSU_REF="d5e9e025b8b49155f8014684d64c91742b465f65"
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "$KSU_REF"
 
-            # 2. Ambil port SUSFS v2.3.0 untuk Linux 4.19 non-GKI
-            #    (port dari susfs4ksu gki-android12-5.10, upstream kernel-4.19 mentok di v1.5.5)
-            git clone --depth=1 https://github.com/fabiannabil1/susfs-4.19-nongki.git susfs419
+            # 1. Setup ReSukiSU
+            KSU_REF="d5e9e025b8b49155f8014684d64c91742b465f65"
+            curl -LSs \
+              "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
+              | bash -s "$KSU_REF"
+
+            # 2. Clone SUSFS v2.3.0 for Linux 4.19 non-GKI
+            git clone --depth=1 \
+              https://github.com/fabiannabil1/susfs-4.19-nongki.git \
+              susfs419
+
             SUSFS_PATCH="$PWD/susfs419/patches/lge-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
+
             ls -la "$SUSFS_PATCH"
 
-            # 3. Terapkan patch SUSFS (membuat fs/susfs.c, include/linux/susfs*.h + hook inline di ~25 file)
-            #    Patch ini dibuat untuk tree LG sm8250 (4.19.325), jadi beberapa hunk bisa saja reject di tree MTK.
-            patch -p1 --no-backup-if-mismatch -F3 < "$SUSFS_PATCH" || true
+            # 3. Apply SUSFS patch.
+            # Skip cmdline.c because the LG implementation in the
+            # patch is incompatible with the MTK Blossom kernel.
+            patch -p1 \
+              --no-backup-if-mismatch \
+              -F3 \
+              --exclude='cmdline.c' \
+              < "$SUSFS_PATCH" || true
 
-            if find . -name "*.rej" -not -path "./susfs419/*" | grep -q .; then
-              echo "=== PERINGATAN: DITEMUKAN FILE .REJ (hunk SUSFS yang tidak cocok dengan tree ini) ==="
-              find . -name "*.rej" -not -path "./susfs419/*" -exec head -n 80 {} +
+            # Restore original MTK cmdline implementation.
+            git checkout -- fs/proc/cmdline.c
+
+            # Report rejected hunks.
+            if find . -name "*.rej" \
+              -not -path "./susfs419/*" | grep -q .; then
+
+              echo "=== PERINGATAN: DITEMUKAN FILE .REJ ==="
+
+              find . -name "*.rej" \
+                -not -path "./susfs419/*" \
+                -exec head -n 80 {} +
             fi
 
-            # 4. Pastikan file inti SUSFS v2.x ada, dan constant yang dibutuhkan ReSukiSU tersedia
-            for f in fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h; do
-              [ -f "$f" ] || { echo "ERROR: $f tidak ada setelah patch SUSFS diterapkan"; exit 1; }
-            done
-            for c in CMD_SUSFS_ADD_SUS_PATH_LOOP CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS CMD_SUSFS_ADD_SUS_MAP CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING; do
-              grep -q "$c" include/linux/susfs_def.h || { echo "ERROR: $c tidak ada di include/linux/susfs_def.h"; exit 1; }
-            done
-            echo "susfs_def.h: semua CMD_SUSFS_* yang dibutuhkan ReSukiSU ditemukan"
+            # 4. Check required SUSFS files.
+            for f in \
+              fs/susfs.c \
+              include/linux/susfs.h \
+              include/linux/susfs_def.h; do
 
-            # susfs.o harus ikut dikompilasi
+              [ -f "$f" ] || {
+                echo "ERROR: $f tidak ditemukan setelah patch SUSFS"
+                exit 1
+              }
+            done
+
+            # Check required SUSFS constants.
+            for c in \
+              CMD_SUSFS_ADD_SUS_PATH_LOOP \
+              CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS \
+              CMD_SUSFS_ADD_SUS_MAP \
+              CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING; do
+
+              grep -q "$c" include/linux/susfs_def.h || {
+                echo "ERROR: $c tidak ditemukan di susfs_def.h"
+                exit 1
+              }
+            done
+
+            echo "susfs_def.h: semua CMD_SUSFS_* ditemukan"
+
+            # Ensure susfs.o is compiled.
             if ! grep -q "susfs.o" fs/Makefile; then
               echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> fs/Makefile
               echo "Menambahkan susfs.o ke fs/Makefile"
             fi
 
-            # 5. Cek hook inline yang diwajibkan inline_hook_check.mk (hanya laporan, tidak menghentikan build)
+            # 5. Check inline hooks.
             echo "=== CEK HOOK SUSFS INLINE ==="
+
             for pair in \
               "kernel/sys.c:ksu_handle_setresuid" \
               "fs/exec.c:ksu_handle_execveat" \
@@ -129,20 +204,29 @@ jobs:
               "fs/stat.c:ksu_handle_vfs_fstat" \
               "kernel/reboot.c:ksu_handle_sys_reboot" \
               "drivers/input/input.c:ksu_handle_input_handle_event"; do
+
               f="${pair%%:*}"
               h="${pair##*:}"
-              if grep -q "$h" "$f"; then echo "OK    $h  ($f)"; else echo "MISS  $h  ($f)"; fi
+
+              if grep -q "$h" "$f"; then
+                echo "OK    $h ($f)"
+              else
+                echo "MISS  $h ($f)"
+              fi
             done
 
-            # 6. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
+            # 6. Compatibility patch for Linux 4.19.
             python3 - << 'EOF'
           import os, re
 
           pkg_obs = 'drivers/kernelsu/manager/pkg_observer.c'
+
           if os.path.exists(pkg_obs):
               with open(pkg_obs, 'r') as f:
                   code = f.read()
+
               code = code.replace('TWA_RESUME', 'true')
+
               if '.handle_inode_event' in code:
                   wrapper = (
                       'static int ksu_handle_event_419(struct fsnotify_group *group, struct inode *inode, '
@@ -154,15 +238,28 @@ jobs:
                       '}\n\n'
                       'static const struct fsnotify_ops'
                   )
-                  code = code.replace('static const struct fsnotify_ops', wrapper, 1)
-                  code = re.sub(r'\.handle_inode_event\s*=\s*ksu_handle_inode_event', '.handle_event = ksu_handle_event_419', code)
+
+                  code = code.replace(
+                      'static const struct fsnotify_ops',
+                      wrapper,
+                      1
+                  )
+
+                  code = re.sub(
+                      r'\.handle_inode_event\s*=\s*ksu_handle_inode_event',
+                      '.handle_event = ksu_handle_event_419',
+                      code
+                  )
+
               with open(pkg_obs, 'w') as f:
                   f.write(code)
+
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
 
-            # 7. Aktifkan konfigurasi KSU + SUSFS v2.x di blossom_defconfig
-            #    (hook method = SUSFS inline, jadi MANUAL_HOOK & TRACEPOINT_HOOK dimatikan)
+            # 7. Enable KSU + SUSFS configuration.
+            # CMDLINE spoof is intentionally disabled because
+            # this kernel's cmdline implementation is incompatible.
             cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
           CONFIG_OVERLAY_FS=y
           CONFIG_KSU=y
@@ -175,11 +272,11 @@ jobs:
           CONFIG_KSU_SUSFS_SPOOF_UNAME=y
           CONFIG_KSU_SUSFS_ENABLE_LOG=y
           CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
           CONFIG_KSU_SUSFS_SUS_MAP=y
           # CONFIG_KPROBES is not set
           EOF
+
           fi
 
       - name: Build Kernel
@@ -193,11 +290,19 @@ jobs:
           make -j$(nproc --all) O=out ARCH=arm64 blossom_defconfig
 
           if [ "${{ matrix.variant }}" == "RSKSU" ]; then
-            grep -q "CONFIG_KSU=y" out/.config || (echo "ERROR: CONFIG_KSU=y gagal aktif di .config!" && exit 1)
-            grep -q "CONFIG_KSU_SUSFS=y" out/.config || (echo "ERROR: CONFIG_KSU_SUSFS=y gagal aktif di .config!" && exit 1)
+            grep -q "CONFIG_KSU=y" out/.config || {
+              echo "ERROR: CONFIG_KSU=y gagal aktif di .config!"
+              exit 1
+            }
+
+            grep -q "CONFIG_KSU_SUSFS=y" out/.config || {
+              echo "ERROR: CONFIG_KSU_SUSFS=y gagal aktif di .config!"
+              exit 1
+            }
           fi
 
           set -o pipefail
+
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -210,19 +315,30 @@ jobs:
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
             Image.gz-dtb 2>&1 | tee build.log || {
+
               echo "=== RINGKASAN ERROR ==="
-              grep -iE "error:|undefined symbol|undefined reference" build.log | tail -n 25
+
+              grep -iE \
+                "error:|undefined symbol|undefined reference" \
+                build.log | tail -n 25
+
               exit 1
             }
 
       - name: Pack AnyKernel3
         run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
+          git clone --depth=1 \
+            https://github.com/osm0sis/AnyKernel3.git \
+            anykernel
+
           cp out/arch/arm64/boot/Image.gz-dtb anykernel/
 
           cd anykernel
 
-          sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev/g' anykernel.sh
+          sed -i \
+            's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev/g' \
+            anykernel.sh
+
           sed -i 's/do.devicecheck=.*/do.devicecheck=1/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=dandelion/g' anykernel.sh
           sed -i 's/device.name2=.*/device.name2=blossom/g' anykernel.sh
@@ -254,23 +370,29 @@ jobs:
               write /proc/ppm/policy_status "2 0"
               write /proc/ppm/policy_status "3 0"
 
-              # Instant Wakeup & Schedutil Fast Ramp-Up (untuk CPU OC 2.3GHz)
+              # Instant Wakeup & Schedutil Fast Ramp-Up
               write /sys/power/sync_on_suspend 0
               write /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us 500
               write /sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us 2000
 
-              # Touch Responsive & CPU Touch Boost (MTK Perfmgr + Schedutil)
+              # Touch Responsive & CPU Touch Boost
               write /sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq 1800000
               write /sys/devices/system/cpu/cpufreq/schedutil/hispeed_load 75
               write /proc/perfmgr/tchbst/user/usrtch 1
               write /proc/perfmgr/boost_ctrl/eas_ctrl/perfserv_ta_uclamp_min 15
           EOF
+
           chmod 0750 ramdisk/init.madara.rc
 
-          sed -i '/dump_boot;/a import_initrc /init.madara.rc;' anykernel.sh
+          sed -i \
+            '/dump_boot;/a import_initrc /init.madara.rc;' \
+            anykernel.sh
 
           ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
-          zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
+
+          zip -r9 "../$ZIP_NAME" * \
+            -x .git README.md *placeholder
+
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
       - name: Upload Kernel Artifact
