@@ -95,7 +95,14 @@ jobs:
             echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
 
             python3 - << 'EOF'
-          import re
+          import os, re
+
+          # Tampilkan syarat manual_hook_check.mk di log untuk verifikasi
+          check_mk = 'KernelSU/kernel/tools/manual_hook_check.mk'
+          if os.path.exists(check_mk):
+              print("=== ISI manual_hook_check.mk ===")
+              with open(check_mk, 'r') as f:
+                  print(f.read())
 
           def patch_file(path, func_sig, extern_decl, hook_target, hook_code):
               with open(path, 'r') as f:
@@ -145,13 +152,13 @@ jobs:
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif'
           )
 
-          # 3. fs/read_write.c
+          # 3. kernel/reboot.c (Pengganti vfs_read di BakaSU / ReSukiSU v4)
           patch_file(
-              'fs/read_write.c',
-              'ssize_t vfs_read(',
-              '#ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos);\n#endif',
-              '\tssize_t ret;',
-              '\tssize_t ret;\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_vfs_read(&file, &buf, &count, &pos);\n#endif'
+              'kernel/reboot.c',
+              'SYSCALL_DEFINE4(reboot,',
+              '#ifdef CONFIG_KSU\nextern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);\n#endif',
+              '\tint ret = 0;',
+              '\tint ret = 0;\n\n#ifdef CONFIG_KSU\n\tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);\n#endif'
           )
 
           # 4. fs/stat.c
