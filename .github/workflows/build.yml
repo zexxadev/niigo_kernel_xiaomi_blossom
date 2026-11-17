@@ -63,73 +63,63 @@ jobs:
             sed -i '/No hooks were defined, please integrate manual hooks in your kernel!/s/\$(error/\$(warning/' drivers/kernelsu/Kbuild
 
             python3 - << 'EOF'
-          def patch_file(path, replacements):
+          def patch_file(path, func_sig, extern_decl, hook_target, hook_code):
               with open(path, 'r') as f:
                   content = f.read()
-              for old, new in replacements:
-                  assert old in content, f"Target tidak ditemukan di {path}: {old}"
-                  content = content.replace(old, new, 1)
+              assert func_sig in content, f"Fungsi tidak ditemukan di {path}: {func_sig}"
+              content = content.replace(func_sig, extern_decl + '\n\n' + func_sig, 1)
+              idx = content.index(func_sig)
+              before, after = content[:idx], content[idx:]
+              assert hook_target in after, f"Target hook tidak ditemukan di dalam {func_sig} ({path})"
+              after = after.replace(hook_target, hook_code, 1)
               with open(path, 'w') as f:
-                  f.write(content)
+                  f.write(before + after)
               print(f"Patched {path} OK")
 
           # 1. fs/exec.c
-          patch_file('fs/exec.c', [
-              ('static int do_execveat_common(',
-               '#ifdef CONFIG_KSU\nextern bool ksu_execveat_hook __read_mostly;\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif\n\nstatic int do_execveat_common('),
-              ('\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);',
-               '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_execveat_hook))\n\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\telse\n\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif')
-          ])
-
-          # 2. fs/open.c (patch spesifik di dalam fungsi do_faccessat)
-          with open('fs/open.c', 'r') as f:
-              open_c = f.read()
-
-          decl_target = 'long do_faccessat('
-          assert decl_target in open_c, "do_faccessat tidak ditemukan di fs/open.c"
-          open_c = open_c.replace(
-              decl_target,
-              '#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\nlong do_faccessat(',
-              1
+          patch_file(
+              'fs/exec.c',
+              'static int do_execveat_common(',
+              '#ifdef CONFIG_KSU\nextern bool ksu_execveat_hook __read_mostly;\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif',
+              '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);',
+              '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_execveat_hook))\n\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\telse\n\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif'
           )
 
-          idx = open_c.index('long do_faccessat(')
-          before, after = open_c[:idx], open_c[idx:]
-          hook_target = '\tunsigned int lookup_flags = LOOKUP_FOLLOW;'
-          assert hook_target in after, "lookup_flags tidak ditemukan di dalam do_faccessat"
-          after = after.replace(
-              hook_target,
-              '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif',
-              1
+          # 2. fs/open.c
+          patch_file(
+              'fs/open.c',
+              'long do_faccessat(',
+              '#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif',
+              '\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
+              '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif'
           )
-
-          with open('fs/open.c', 'w') as f:
-              f.write(before + after)
-          print("Patched fs/open.c OK")
 
           # 3. fs/read_write.c
-          patch_file('fs/read_write.c', [
-              ('ssize_t vfs_read(',
-               '#ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos);\n#endif\n\nssize_t vfs_read('),
-              ('\tssize_t ret;',
-               '\tssize_t ret;\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_vfs_read(&file, &buf, &count, &pos);\n#endif')
-          ])
+          patch_file(
+              'fs/read_write.c',
+              'ssize_t vfs_read(',
+              '#ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos);\n#endif',
+              '\tssize_t ret;',
+              '\tssize_t ret;\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_vfs_read(&file, &buf, &count, &pos);\n#endif'
+          )
 
           # 4. fs/stat.c
-          patch_file('fs/stat.c', [
-              ('int vfs_statx(',
-               '#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif\n\nint vfs_statx('),
-              ('\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
-               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif')
-          ])
+          patch_file(
+              'fs/stat.c',
+              'int vfs_statx(',
+              '#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif',
+              '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
+              '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif'
+          )
 
           # 5. drivers/input/input.c
-          patch_file('drivers/input/input.c', [
-              ('void input_event(',
-               '#ifdef CONFIG_KSU\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif\n\nvoid input_event('),
-              ('\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
-               '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif')
-          ])
+          patch_file(
+              'drivers/input/input.c',
+              'void input_event(',
+              '#ifdef CONFIG_KSU\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif',
+              '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
+              '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif'
+          )
 
           # 6. fs/namespace.c (backport path_umount kompatibel dengan Kbuild internal.h)
           with open('fs/namespace.c', 'r') as f:
