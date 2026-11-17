@@ -30,6 +30,32 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
+      - name: Apply Performance & GPU OC Patches
+        run: |
+          python3 - << 'EOF'
+          import glob
+
+          # 1. Matikan GENTLE_FAIR_SLEEPERS di scheduler (UI & Touch lebih instan)
+          feat_file = 'kernel/sched/features.h'
+          with open(feat_file, 'r') as f:
+              feat = f.read()
+          if 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)' in feat:
+              feat = feat.replace('SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', 1)
+              with open(feat_file, 'w') as f:
+                  f.write(feat)
+              print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
+
+          # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
+          for path in glob.glob('drivers/misc/mediatek/base/power/**/mtk_gpufreq*.c', recursive=True):
+              with open(path, 'r') as f:
+                  gpu = f.read()
+              if 'GPUOP(650000,' in gpu:
+                  gpu = gpu.replace('GPUOP(650000,', 'GPUOP(730000,')
+                  with open(path, 'w') as f:
+                      f.write(gpu)
+                  print(f"Patched GPU OC 730MHz in {path} OK")
+          EOF
+
       - name: Setup Variant (${{ matrix.variant }})
         run: |
           if [ "${{ matrix.variant }}" == "KSUN" ]; then
@@ -184,13 +210,24 @@ jobs:
 
           cat << 'EOF' > ramdisk/init.madara.rc
           on property:sys.boot_completed=1
+              # VM & Memory (RAM 2GB + ZRAM LZ4)
               write /proc/sys/vm/swappiness 120
               write /proc/sys/vm/vfs_cache_pressure 100
               write /proc/sys/vm/page-cluster 0
+
+              # Network Gaming (TCP BBR + FQ)
               write /proc/sys/net/core/default_qdisc fq
               write /proc/sys/net/ipv4/tcp_congestion_control bbr
+
+              # Fast eMMC I/O & Disable SPI CRC
               write /sys/block/mmcblk0/queue/scheduler noop
               write /sys/block/mmcblk0/queue/read_ahead_kb 128
+              write /sys/module/mmc_core/parameters/use_spi_crc 0
+
+              # Bypass MTK PPM Thermal & Power Budget Throttle (Tetap aman via HW thermal)
+              write /proc/ppm/policy_status "1 0"
+              write /proc/ppm/policy_status "2 0"
+              write /proc/ppm/policy_status "3 0"
           EOF
           chmod 0750 ramdisk/init.madara.rc
 
