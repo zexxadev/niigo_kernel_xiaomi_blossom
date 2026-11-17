@@ -67,13 +67,14 @@ jobs:
               with open(path, 'r') as f:
                   content = f.read()
               assert func_sig in content, f"Fungsi tidak ditemukan di {path}: {func_sig}"
-              content = content.replace(func_sig, extern_decl + '\n\n' + func_sig, 1)
-              idx = content.index(func_sig)
-              before, after = content[:idx], content[idx:]
+              # Cari definisi fungsi asli (kemunculan terakhir, melewati forward declaration)
+              idx = content.rindex(func_sig)
+              before = content[:idx]
+              after = content[idx:]
               assert hook_target in after, f"Target hook tidak ditemukan di dalam {func_sig} ({path})"
               after = after.replace(hook_target, hook_code, 1)
               with open(path, 'w') as f:
-                  f.write(before + after)
+                  f.write(before + extern_decl + '\n\n' + after)
               print(f"Patched {path} OK")
 
           # 1. fs/exec.c
