@@ -301,6 +301,59 @@ jobs:
           with open('fs/dcache.c', 'w') as f:
               f.write(dcache_c)
 
+          # 4f. kernel/reboot.c (ksu_handle_sys_reboot)
+          with open('kernel/reboot.c', 'r') as f:
+              reboot_c = f.read()
+          if 'ksu_handle_sys_reboot' not in reboot_c:
+              decl_reboot = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);\n'
+                  '#endif\n\n'
+              )
+              hook_reboot = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  '\tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);\n'
+                  '#endif\n\n'
+              )
+              idx = reboot_c.index('SYSCALL_DEFINE4(reboot,')
+              before, after = reboot_c[:idx], reboot_c[idx:]
+              marker = '\t/* We only trust the superuser with rebooting the system. */'
+              if marker in after:
+                  after = after.replace(marker, hook_reboot + marker, 1)
+              else:
+                  after = re.sub(r'(SYSCALL_DEFINE4\(reboot,[^)]*\)\s*\{\n)', lambda m: m.group(1) + hook_reboot, after, count=1)
+              assert 'ksu_handle_sys_reboot' in after, "Gagal memasang hook di kernel/reboot.c"
+              with open('kernel/reboot.c', 'w') as f:
+                  f.write(before + decl_reboot + after)
+              print("Patched ksu_handle_sys_reboot in kernel/reboot.c OK")
+
+          # 4g. drivers/input/input.c (ksu_handle_input_handle_event)
+          with open('drivers/input/input.c', 'r') as f:
+              input_c = f.read()
+          if 'ksu_handle_input_handle_event' not in input_c:
+              decl_input = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  'extern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n'
+                  '#endif\n\n'
+              )
+              hook_input = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  '\tksu_handle_input_handle_event(&type, &code, &value);\n'
+                  '#endif\n'
+              )
+              idx = input_c.index('static void input_handle_event(')
+              before, after = input_c[:idx], input_c[idx:]
+              after, n_in = re.subn(
+                  r'(static void input_handle_event\([^)]*\)\s*\{\n)',
+                  lambda m: m.group(1) + hook_input,
+                  after,
+                  count=1
+              )
+              assert n_in == 1, "Gagal menemukan input_handle_event di drivers/input/input.c"
+              with open('drivers/input/input.c', 'w') as f:
+                  f.write(before + decl_input + after)
+              print("Patched ksu_handle_input_handle_event in drivers/input/input.c OK")
+
           inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
           if os.path.exists(inline_mk):
               print("=== ISI inline_hook_check.mk ===")
