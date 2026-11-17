@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [NoKSUN, RSKSU]
+        variant: [Vanilla, RSKSU]
 
     steps:
       - name: Checkout Kernel Source
