@@ -153,7 +153,7 @@ jobs:
               https://github.com/fabiannabil1/susfs-4.19-nongki.git \
               susfs419
 
-            SUSFS_PATCH="$PWD/susfs419/patches/lge-sm-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
+            SUSFS_PATCH="$PWD/susfs419/patches/lge-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
 
             if [ ! -f "$SUSFS_PATCH" ]; then
               echo "ERROR: File patch SUSFS tidak ditemukan!"
