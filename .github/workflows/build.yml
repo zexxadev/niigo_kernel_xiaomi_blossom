@@ -401,19 +401,20 @@ jobs:
                   f.write(namei_new)
               print("Removed static from filename_lookup in fs/namei.c OK")
 
-          # Tambahkan deklarasi filename_lookup di fs/open.c
+          # Tambahkan deklarasi filename_lookup SETELAH semua #include di fs/open.c
           with open('fs/open.c', 'r') as f:
               open_c = f.read()
           decl = (
-              '#include "internal.h"\n'
-              'extern int filename_lookup(int dfd, struct filename *name, '
+              '\nextern int filename_lookup(int dfd, struct filename *name, '
               'unsigned flags, struct path *path, struct path *root);\n'
           )
           if 'extern int filename_lookup(' not in open_c:
-              open_c = re.sub(r'(#include\s+[<"])', decl + r'\1', open_c, count=1)
+              includes = list(re.finditer(r'^#include\s+[<"].*?[>"]', open_c, flags=re.MULTILINE))
+              last_inc_end = includes[-1].end()
+              open_c = open_c[:last_inc_end] + decl + open_c[last_inc_end:]
               with open('fs/open.c', 'w') as f:
                   f.write(open_c)
-              print("Added filename_lookup declaration in fs/open.c OK")
+              print("Added filename_lookup declaration after includes in fs/open.c OK")
           EOF
 
             # 10. Enable KSU + SUSFS configuration
