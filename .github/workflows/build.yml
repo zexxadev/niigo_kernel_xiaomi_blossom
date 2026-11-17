@@ -161,7 +161,7 @@ jobs:
               '\tint ret = 0;\n\n#ifdef CONFIG_KSU\n\tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);\n#endif'
           )
 
-          # 4. fs/stat.c
+          # 4. fs/stat.c (vfs_statx + newfstat + fstat64)
           patch_file(
               'fs/stat.c',
               'int vfs_statx(',
@@ -169,6 +169,25 @@ jobs:
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif'
           )
+
+          patch_file(
+              'fs/stat.c',
+              'SYSCALL_DEFINE2(newfstat,',
+              '#ifdef CONFIG_KSU\nextern int ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);\n#endif',
+              '\treturn error;',
+              '#ifdef CONFIG_KSU\n\tksu_handle_newfstat_ret(&fd, &statbuf);\n#endif\n\n\treturn error;'
+          )
+
+          with open('fs/stat.c', 'r') as f:
+              stat_c = f.read()
+          if 'SYSCALL_DEFINE2(fstat64,' in stat_c:
+              patch_file(
+                  'fs/stat.c',
+                  'SYSCALL_DEFINE2(fstat64,',
+                  '#ifdef CONFIG_KSU\nextern int ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr);\n#endif',
+                  '\treturn error;',
+                  '#ifdef CONFIG_KSU\n\tksu_handle_fstat64_ret(&fd, &statbuf);\n#endif\n\n\treturn error;'
+              )
 
           # 5. drivers/input/input.c
           patch_file(
