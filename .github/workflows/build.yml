@@ -116,7 +116,7 @@ jobs:
                   f.write(before + extern_decl + '\n\n' + after)
               print(f"Patched {path} OK")
 
-          # 1. fs/exec.c
+          # 1. fs/exec.c (ReSukiSU / BakaSU v4.2 memanggil ksu_handle_execveat langsung)
           with open('fs/exec.c', 'r') as f:
               exec_c = f.read()
           sig_exec = 'static int __do_execve_file('
@@ -125,18 +125,13 @@ jobs:
           pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
           ksu_exec_hook = (
               r'\1\n\n#ifdef CONFIG_KSU\n'
-              r'\tif (unlikely(ksu_execveat_hook))\n'
-              r'\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
-              r'\telse\n'
-              r'\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n'
+              r'\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
               r'#endif'
           )
           after = re.sub(pattern, ksu_exec_hook, after, count=1)
           decl_exec = (
               '#ifdef CONFIG_KSU\n'
-              'extern bool ksu_execveat_hook __read_mostly;\n'
               'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
-              'extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
               '#endif\n\n'
           )
           with open('fs/exec.c', 'w') as f:
