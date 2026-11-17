@@ -36,27 +36,29 @@ jobs:
           feat_file = 'kernel/sched/features.h'
           with open(feat_file, 'r') as f:
               feat = f.read()
-          feat_new, n1 = re.subn(r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat)
+          feat_new, n1 = re.subn(r'(#define\s+SCHED_FEAT_GENTLE_FAIR_SLEEPERS\s+)1\b', r'\g<1>0', feat)
+          if not n1:
+              feat_new, n1 = re.subn(r'SCHED_FEAT\(\s*GENTLE_FAIR_SLEEPERS\s*,\s*true\s*\)', 'SCHED_FEAT(GENTLE_FAIR_SLEEPERS, false)', feat)
           if n1:
               with open(feat_file, 'w') as f:
                   f.write(feat_new)
               print("Patched NO_GENTLE_FAIR_SLEEPERS OK")
-          else:
-              print("INFO GENTLE_FAIR_SLEEPERS:", [l.strip() for l in feat.splitlines() if 'GENTLE_FAIR_SLEEPERS' in l])
 
           # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
           gpu_patched = False
-          for path in glob.glob('drivers/misc/mediatek/**/*gpufreq*.[ch]', recursive=True):
+          gpu_files = glob.glob('drivers/misc/mediatek/**/*gpufreq*.[ch]', recursive=True)
+          target_gpu = [p for p in gpu_files if 'mt6765' in p or 'mt6762' in p] or gpu_files
+          for path in target_gpu:
               with open(path, 'r') as f:
                   gpu = f.read()
-              gpu_new, n2 = re.subn(r'(GPUOP\s*\(\s*)650000(\s*,)', r'\g<1>730000\g', gpu)
+              gpu_new, n2 = re.subn(r'\b650000\b', '730000', gpu)
               if n2:
                   with open(path, 'w') as f:
                       f.write(gpu_new)
                   print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
                   gpu_patched = True
           if not gpu_patched:
-              print("PERINGATAN: Macro GPUOP(650000) tidak ditemukan di driver gpufreq!")
+              print("PERINGATAN: Angka 650000 tidak ditemukan, daftar file gpufreq:", target_gpu)
 
           # 3. CPU Overclock +300 MHz (Big: 2.0 -> 2.3 GHz, Little: 1.5 -> 1.8 GHz)
           for cpu_f in glob.glob('drivers/misc/mediatek/base/power/cpufreq_v1/**/*.[ch]', recursive=True):
