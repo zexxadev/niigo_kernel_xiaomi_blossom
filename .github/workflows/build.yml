@@ -73,6 +73,33 @@ jobs:
               find . -name "*.rej" -exec head -n 50 {} +
             fi
 
+            # Pastikan field SUSFS masuk ke struct task_struct di include/linux/sched.h
+            python3 - << 'EOF'
+          import re
+
+          sched_h = 'include/linux/sched.h'
+          with open(sched_h, 'r') as f:
+              content = f.read()
+
+          if 'susfs_task_state' not in content:
+              susfs_fields = (
+                  '#ifdef CONFIG_KSU_SUSFS\n'
+                  '\tu64 susfs_task_state;\n'
+                  '\tu64 susfs_last_fake_mnt_id;\n'
+                  '#endif\n'
+              )
+              content, count = re.subn(
+                  r'(\n[ \t]*struct thread_struct[ \t]+thread;)',
+                  r'\n' + susfs_fields + r'\1',
+                  content,
+                  count=1
+              )
+              assert count == 1, "Gagal menemukan struct thread_struct di include/linux/sched.h"
+              with open(sched_h, 'w') as f:
+                  f.write(content)
+              print("Patched struct task_struct in include/linux/sched.h OK")
+          EOF
+
             # 3. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
             python3 - << 'EOF'
           import os, re
