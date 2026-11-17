@@ -75,46 +75,38 @@ jobs:
               with open(feat_file, 'w') as f:
                   f.write(feat_new)
 
-          # 2. GPU Overclock PowerVR GE8320 (650 MHz -> 730 MHz)
+          # 2. GPU Overclock PowerVR GE8320 -> 730 MHz (730000 kHz)
           gpu_patched = False
-
-          gpu_files = glob.glob(
-              'drivers/misc/mediatek/**/*gpufreq*.[ch]',
-              recursive=True
-          )
-
-          target_gpu = [
-              p for p in gpu_files
-              if 'mt6765' in p or 'mt6762' in p
-          ] or gpu_files
+          gpu_files = glob.glob('drivers/misc/mediatek/**/*gpu*.[ch]', recursive=True)
+          target_gpu = [p for p in gpu_files if ('mt6765' in p or 'mt6762' in p) and 'gpufreq' in p] or \
+                       [p for p in gpu_files if 'gpufreq' in p]
 
           for path in target_gpu:
-              with open(path, 'r') as f:
+              with open(path, 'r', errors='ignore') as f:
                   gpu = f.read()
 
+              # Tangkap makro FREQ0 (650000 / 600000 / 520000) atau angka 650000 di tabel OPP
               gpu_new, n2 = re.subn(
-                  r'\b650000\b',
-                  '730000',
+                  r'(#define\s+(?:SEG_)?GPU_DVFS_FREQ0\s*\(?\s*)(?:650000|600000|520000)(\s*\)?)',
+                  r'\g<1>730000\g<2>',
                   gpu
               )
+              if not n2:
+                  gpu_new, n2 = re.subn(r'\b650000\b', '730000', gpu)
 
               if n2:
                   with open(path, 'w') as f:
                       f.write(gpu_new)
-
-                  print(
-                      f"Patched GPU OC 730MHz in {path} "
-                      f"({n2} entries) OK"
-                  )
-
+                  print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
                   gpu_patched = True
 
           if not gpu_patched:
-              print(
-                  "PERINGATAN: Angka 650000 tidak ditemukan, "
-                  "daftar file gpufreq:",
-                  target_gpu
-              )
+              print("PERINGATAN: Tabel GPU belum ter-patch. File gpufreq ditemukan:", target_gpu)
+              for path in target_gpu:
+                  with open(path, 'r', errors='ignore') as f:
+                      for i, line in enumerate(f, 1):
+                          if 'FREQ0' in line or '600000' in line or '520000' in line:
+                              print(f"  {path}:{i}: {line.strip()}")
 
           # 3. CPU Overclock +300 MHz
           for cpu_f in glob.glob(
