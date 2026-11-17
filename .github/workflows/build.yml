@@ -31,6 +31,8 @@ jobs:
           export KBUILD_BUILD_USER="Zexxa"
           export KBUILD_BUILD_HOST="GitHubActions"
 
+          make -j$(nproc --all) O=out ARCH=arm64 blossom_defconfig
+
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
