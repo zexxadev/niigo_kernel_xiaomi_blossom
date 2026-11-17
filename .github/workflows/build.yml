@@ -2,9 +2,6 @@ name: Build madaraKernel Blossom (Dual-Variant)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - niigo_yoka
 
 jobs:
   build:
