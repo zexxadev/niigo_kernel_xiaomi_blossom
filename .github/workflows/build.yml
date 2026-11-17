@@ -83,285 +83,58 @@ jobs:
       - name: Setup Variant (${{ matrix.variant }})
         run: |
           if [ "${{ matrix.variant }}" == "RSKSU" ]; then
-            # 1. Setup ReSukiSU (BakaSU v4.2)
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+            # 1. Setup ReSukiSU (BakaSU), di-pin ke commit yang dipakai port SUSFS v2.3.0 untuk 4.19
+            #    (ReSukiSU main hanya mengikuti SUSFS terbaru, jadi jangan pakai "main")
+            KSU_REF="d5e9e025b8b49155f8014684d64c91742b465f65"
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "$KSU_REF"
 
-            # 2. Clone SUSFS upstream khusus Linux 4.19
-            git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19 susfs4ksu
+            # 2. Ambil port SUSFS v2.3.0 untuk Linux 4.19 non-GKI
+            #    (port dari susfs4ksu gki-android12-5.10, upstream kernel-4.19 mentok di v1.5.5)
+            git clone --depth=1 https://github.com/fabiannabil1/susfs-4.19-nongki.git susfs419
+            SUSFS_PATCH="$PWD/susfs419/patches/lge-sm8250-29902cf733dc/0002-susfs-v2.3.0-4.19.patch"
+            ls -la "$SUSFS_PATCH"
 
-            # Salin file core SUSFS ke kernel (JANGAN salin folder KernelSU-nya)
-            cp -r susfs4ksu/kernel_patches/fs/* fs/
-            cp -r susfs4ksu/kernel_patches/include/linux/* include/linux/
+            # 3. Terapkan patch SUSFS (membuat fs/susfs.c, include/linux/susfs*.h + hook inline di ~25 file)
+            #    Patch ini dibuat untuk tree LG sm8250 (4.19.325), jadi beberapa hunk bisa saja reject di tree MTK.
+            patch -p1 --no-backup-if-mismatch -F3 < "$SUSFS_PATCH" || true
 
-            # Terapkan patch kernel SUSFS 4.19 & cek jika ada hunk MTK yang reject
-            patch -p1 --no-backup-if-mismatch -N < susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch || true
-            if find . -name "*.rej" | grep -q .; then
-              echo "=== PERINGATAN: DITEMUKAN FILE .REJ ==="
-              find . -name "*.rej" -exec head -n 50 {} +
+            if find . -name "*.rej" -not -path "./susfs419/*" | grep -q .; then
+              echo "=== PERINGATAN: DITEMUKAN FILE .REJ (hunk SUSFS yang tidak cocok dengan tree ini) ==="
+              find . -name "*.rej" -not -path "./susfs419/*" -exec head -n 80 {} +
             fi
 
-            # Pastikan field, header, & inline hook SUSFS masuk ke file yang ter-reject MTK
-            python3 - << 'EOF'
-          import os, re
+            # 4. Pastikan file inti SUSFS v2.x ada, dan constant yang dibutuhkan ReSukiSU tersedia
+            for f in fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h; do
+              [ -f "$f" ] || { echo "ERROR: $f tidak ada setelah patch SUSFS diterapkan"; exit 1; }
+            done
+            for c in CMD_SUSFS_ADD_SUS_PATH_LOOP CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS CMD_SUSFS_ADD_SUS_MAP CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING; do
+              grep -q "$c" include/linux/susfs_def.h || { echo "ERROR: $c tidak ada di include/linux/susfs_def.h"; exit 1; }
+            done
+            echo "susfs_def.h: semua CMD_SUSFS_* yang dibutuhkan ReSukiSU ditemukan"
 
-          # 1. include/linux/sched.h
-          sched_h = 'include/linux/sched.h'
-          with open(sched_h, 'r') as f:
-              content = f.read()
+            # susfs.o harus ikut dikompilasi
+            if ! grep -q "susfs.o" fs/Makefile; then
+              echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> fs/Makefile
+              echo "Menambahkan susfs.o ke fs/Makefile"
+            fi
 
-          if 'susfs_task_state' not in content:
-              susfs_fields = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  '\tu64 susfs_task_state;\n'
-                  '\tu64 susfs_last_fake_mnt_id;\n'
-                  '#endif\n'
-              )
-              content, count = re.subn(
-                  r'(\n[ \t]*struct thread_struct[ \t]+thread;)',
-                  r'\n' + susfs_fields + r'\1',
-                  content,
-                  count=1
-              )
-              assert count == 1, "Gagal menemukan struct thread_struct di include/linux/sched.h"
-              with open(sched_h, 'w') as f:
-                  f.write(content)
-              print("Patched struct task_struct in include/linux/sched.h OK")
+            # 5. Cek hook inline yang diwajibkan inline_hook_check.mk (hanya laporan, tidak menghentikan build)
+            echo "=== CEK HOOK SUSFS INLINE ==="
+            for pair in \
+              "kernel/sys.c:ksu_handle_setresuid" \
+              "fs/exec.c:ksu_handle_execveat" \
+              "fs/open.c:ksu_handle_faccessat" \
+              "fs/read_write.c:ksu_handle_sys_read" \
+              "fs/stat.c:ksu_handle_stat" \
+              "fs/stat.c:ksu_handle_vfs_fstat" \
+              "kernel/reboot.c:ksu_handle_sys_reboot" \
+              "drivers/input/input.c:ksu_handle_input_handle_event"; do
+              f="${pair%%:*}"
+              h="${pair##*:}"
+              if grep -q "$h" "$f"; then echo "OK    $h  ($f)"; else echo "MISS  $h  ($f)"; fi
+            done
 
-          # 2. fs/proc/task_mmu.c
-          task_mmu = 'fs/proc/task_mmu.c'
-          with open(task_mmu, 'r') as f:
-              mmu_code = f.read()
-
-          kstat_def = ''
-          for h_path in ['include/linux/susfs_def.h', 'include/linux/fs.h']:
-              if os.path.exists(h_path):
-                  with open(h_path, 'r') as hf:
-                      for line in hf:
-                          if 'define INODE_STATE_SUS_KSTAT' in line:
-                              kstat_def = line.strip()
-                              break
-              if kstat_def:
-                  break
-
-          if not kstat_def:
-              kstat_def = '#define INODE_STATE_SUS_KSTAT BIT(24)'
-
-          inc_block = (
-              '#ifdef CONFIG_KSU_SUSFS\n'
-              '#include <linux/susfs_def.h>\n'
-              '#ifndef INODE_STATE_SUS_KSTAT\n'
-              f'{kstat_def}\n'
-              '#endif\n'
-              '#endif\n'
-          )
-
-          if 'INODE_STATE_SUS_KSTAT' not in mmu_code.split('#include')[0]:
-              mmu_code = re.sub(r'(#include\s+[<"])', inc_block + r'\1', mmu_code, count=1)
-              with open(task_mmu, 'w') as f:
-                  f.write(mmu_code)
-              print(f"Patched fs/proc/task_mmu.c OK ({kstat_def})")
-
-          # 3. kernel/sys.c (ksu_handle_setresuid untuk SUSFS Inline Hook)
-          sys_c = 'kernel/sys.c'
-          with open(sys_c, 'r') as f:
-              sys_code = f.read()
-
-          if 'ksu_handle_setresuid' not in sys_code:
-              decl_setresuid = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  'extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);\n'
-                  '#endif\n\n'
-              )
-              hook_setresuid = (
-                  '\n#ifdef CONFIG_KSU_SUSFS\n'
-                  '\tksu_handle_setresuid(ruid, euid, suid);\n'
-                  '#endif\n'
-              )
-              target_sig = 'long __sys_setresuid(' if 'long __sys_setresuid(' in sys_code else 'SYSCALL_DEFINE3(setresuid,'
-              idx = sys_code.index(target_sig)
-              before, after = sys_code[:idx], sys_code[idx:]
-              after = after.replace('{', '{' + hook_setresuid, 1)
-              with open(sys_c, 'w') as f:
-                  f.write(before + decl_setresuid + after)
-              print(f"Patched ksu_handle_setresuid in {sys_c} ({target_sig}) OK")
-
-          # 4. Pastikan semua inline hook SUSFS terpasang jika ada hunk MTK yang reject
-          # 4a. fs/exec.c (ksu_handle_execveat)
-          with open('fs/exec.c', 'r') as f:
-              exec_c = f.read()
-          if 'ksu_handle_execveat' not in exec_c:
-              sig_exec = 'static int __do_execve_file('
-              idx = exec_c.rindex(sig_exec)
-              before, after = exec_c[:idx], exec_c[idx:]
-              pattern = r'(if\s*\(\s*IS_ERR\s*\(\s*filename\s*\)\s*\)\s*(?:\{\s*)?return\s+PTR_ERR\s*\(\s*filename\s*\)\s*;(?:\s*\})?)'
-              ksu_exec_hook = (
-                  r'\1\n\n#ifdef CONFIG_KSU_SUSFS\n'
-                  r'\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n'
-                  r'#endif'
-              )
-              after = re.sub(pattern, ksu_exec_hook, after, count=1)
-              decl_exec = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n'
-                  '#endif\n\n'
-              )
-              with open('fs/exec.c', 'w') as f:
-                  f.write(before + decl_exec + after)
-              print("Patched ksu_handle_execveat in fs/exec.c OK")
-
-          # 4b. fs/open.c (ksu_handle_faccessat)
-          with open('fs/open.c', 'r') as f:
-              open_c = f.read()
-          if 'ksu_handle_faccessat' not in open_c:
-              idx = open_c.rindex('long do_faccessat(')
-              before, after = open_c[:idx], open_c[idx:]
-              after = after.replace(
-                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
-                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU_SUSFS\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif',
-                  1
-              )
-              decl = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\n'
-              with open('fs/open.c', 'w') as f:
-                  f.write(before + decl + after)
-              print("Patched ksu_handle_faccessat in fs/open.c OK")
-
-          # 4c. fs/stat.c (ksu_handle_stat & ksu_handle_vfs_fstat di SYSCALL_DEFINE2(newfstat))
-          with open('fs/stat.c', 'r') as f:
-              stat_c = f.read()
-
-          if 'ksu_handle_stat' not in stat_c and 'int vfs_statx(' in stat_c:
-              idx = stat_c.rindex('int vfs_statx(')
-              before, after = stat_c[:idx], stat_c[idx:]
-              after = after.replace(
-                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
-                  '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU_SUSFS\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif',
-                  1
-              )
-              decl = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif\n\n'
-              stat_c = before + decl + after
-              print("Patched ksu_handle_stat in fs/stat.c OK")
-
-          if 'ksu_handle_vfs_fstat' not in stat_c:
-              sig_newfstat = 'SYSCALL_DEFINE2(newfstat,'
-              idx = stat_c.index(sig_newfstat)
-              before, after = stat_c[:idx], stat_c[idx:]
-              after = re.sub(
-                  r'(int\s+error\s*=\s*vfs_fstat\s*\(\s*fd\s*,\s*&stat\s*\)\s*;)',
-                  r'\1\n#ifdef CONFIG_KSU_SUSFS\n\tif (!error)\n\t\tksu_handle_vfs_fstat(fd, &stat.size);\n#endif',
-                  after,
-                  count=1
-              )
-              decl_fstat = '#ifdef CONFIG_KSU_SUSFS\nextern int ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr);\n#endif\n\n'
-              stat_c = before + decl_fstat + after
-              print("Patched ksu_handle_vfs_fstat in fs/stat.c OK")
-
-          with open('fs/stat.c', 'w') as f:
-              f.write(stat_c)
-
-          # 4d. fs/read_write.c (ksu_handle_sys_read tanpa ksu_init_rc_hook)
-          with open('fs/read_write.c', 'r') as f:
-              rw_c = f.read()
-          if 'ksu_handle_sys_read' not in rw_c:
-              sig_read = 'SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)'
-              idx = rw_c.index(sig_read)
-              before, after = rw_c[:idx], rw_c[idx:]
-              decl_read = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  'extern __attribute__((cold)) int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr, size_t *count_ptr);\n'
-                  '#endif\n\n'
-              )
-              hook_read = (
-                  '\n#ifdef CONFIG_KSU_SUSFS\n'
-                  '\tksu_handle_sys_read(fd, &buf, &count);\n'
-                  '#endif'
-              )
-              after = after.replace('{', '{' + hook_read, 1)
-              with open('fs/read_write.c', 'w') as f:
-                  f.write(before + decl_read + after)
-              print("Patched ksu_handle_sys_read in fs/read_write.c OK")
-
-          # 4e. fs/dcache.c (tambal hunk __d_lookup_rcu yang ter-reject MTK)
-          with open('fs/dcache.c', 'r') as f:
-              dcache_c = f.read()
-          if 'susfs_def.h' not in dcache_c:
-              dcache_c = re.sub(r'(#include\s+[<"])', '#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n' + r'\1', dcache_c, count=1)
-          if 'INODE_STATE_SUS_PATH' not in dcache_c:
-              target_dc = 'if (dentry_cmp(dentry, str, hashlen_len(hashlen)) != 0)\n\t\t\t\tcontinue;'
-              patch_dc = (
-                  target_dc + '\n'
-                  '#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n'
-                  '\t\t\tif (dentry->d_inode && unlikely(dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {\n'
-                  '\t\t\t\tcontinue;\n'
-                  '\t\t\t}\n'
-                  '#endif'
-              )
-              if target_dc in dcache_c:
-                  dcache_c = dcache_c.replace(target_dc, patch_dc, 1)
-                  print("Patched INODE_STATE_SUS_PATH in fs/dcache.c OK")
-          with open('fs/dcache.c', 'w') as f:
-              f.write(dcache_c)
-
-          # 4f. kernel/reboot.c (ksu_handle_sys_reboot)
-          with open('kernel/reboot.c', 'r') as f:
-              reboot_c = f.read()
-          if 'ksu_handle_sys_reboot' not in reboot_c:
-              decl_reboot = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);\n'
-                  '#endif\n\n'
-              )
-              hook_reboot = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  '\tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);\n'
-                  '#endif\n\n'
-              )
-              idx = reboot_c.index('SYSCALL_DEFINE4(reboot,')
-              before, after = reboot_c[:idx], reboot_c[idx:]
-              marker = '\t/* We only trust the superuser with rebooting the system. */'
-              if marker in after:
-                  after = after.replace(marker, hook_reboot + marker, 1)
-              else:
-                  after = re.sub(r'(SYSCALL_DEFINE4\(reboot,[^)]*\)\s*\{\n)', lambda m: m.group(1) + hook_reboot, after, count=1)
-              assert 'ksu_handle_sys_reboot' in after, "Gagal memasang hook di kernel/reboot.c"
-              with open('kernel/reboot.c', 'w') as f:
-                  f.write(before + decl_reboot + after)
-              print("Patched ksu_handle_sys_reboot in kernel/reboot.c OK")
-
-          # 4g. drivers/input/input.c (ksu_handle_input_handle_event)
-          with open('drivers/input/input.c', 'r') as f:
-              input_c = f.read()
-          if 'ksu_handle_input_handle_event' not in input_c:
-              decl_input = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  'extern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n'
-                  '#endif\n\n'
-              )
-              hook_input = (
-                  '#ifdef CONFIG_KSU_SUSFS\n'
-                  '\tksu_handle_input_handle_event(&type, &code, &value);\n'
-                  '#endif\n'
-              )
-              idx = input_c.index('static void input_handle_event(')
-              before, after = input_c[:idx], input_c[idx:]
-              after, n_in = re.subn(
-                  r'(static void input_handle_event\([^)]*\)\s*\{\n)',
-                  lambda m: m.group(1) + hook_input,
-                  after,
-                  count=1
-              )
-              assert n_in == 1, "Gagal menemukan input_handle_event di drivers/input/input.c"
-              with open('drivers/input/input.c', 'w') as f:
-                  f.write(before + decl_input + after)
-              print("Patched ksu_handle_input_handle_event in drivers/input/input.c OK")
-
-          inline_mk = 'KernelSU/kernel/tools/inline_hook_check.mk'
-          if os.path.exists(inline_mk):
-              print("=== ISI inline_hook_check.mk ===")
-              with open(inline_mk, 'r') as f:
-                  print(f.read())
-          EOF
-
-            # 3. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
+            # 6. Patch kompatibilitas pkg_observer.c untuk Linux 4.19 (TWA_RESUME & fsnotify_ops)
             python3 - << 'EOF'
           import os, re
 
@@ -388,24 +161,23 @@ jobs:
               print("Patched pkg_observer.c for Linux 4.19 OK")
           EOF
 
-            # 4. Aktifkan konfigurasi KSU + SUSFS di blossom_defconfig
+            # 7. Aktifkan konfigurasi KSU + SUSFS v2.x di blossom_defconfig
+            #    (hook method = SUSFS inline, jadi MANUAL_HOOK & TRACEPOINT_HOOK dimatikan)
             cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
           CONFIG_OVERLAY_FS=y
           CONFIG_KSU=y
+          # CONFIG_KSU_MANUAL_HOOK is not set
+          # CONFIG_KSU_TRACEPOINT_HOOK is not set
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_SUS_PATH=y
           CONFIG_KSU_SUSFS_SUS_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
           CONFIG_KSU_SUSFS_SUS_KSTAT=y
-          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
           CONFIG_KSU_SUSFS_SPOOF_UNAME=y
           CONFIG_KSU_SUSFS_ENABLE_LOG=y
           CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
           CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-          # CONFIG_KSU_SUSFS_SUS_SU is not set
+          CONFIG_KSU_SUSFS_SUS_MAP=y
           # CONFIG_KPROBES is not set
           EOF
           fi
