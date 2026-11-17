@@ -1,12 +1,19 @@
-name: Build Madara Blossom (Non-KSU)
+name: Build madaraKernel Blossom (Dual-Variant)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - niigo_yoka
 
 jobs:
   build:
-    name: Compile Kernel 4.19
+    name: Build (${{ matrix.variant }})
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [NoKSUN, KSUN]
 
     steps:
       - name: Checkout Kernel Source
@@ -23,7 +30,109 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Build Kernel (blossom_defconfig)
+      - name: Setup Variant (${{ matrix.variant }})
+        run: |
+          if [ "${{ matrix.variant }}" == "KSUN" ]; then
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            echo "CONFIG_KSU=y" >> arch/arm64/configs/blossom_defconfig
+            echo "# CONFIG_KPROBES is not set" >> arch/arm64/configs/blossom_defconfig
+
+            python3 - << 'EOF'
+          def patch_file(path, replacements):
+              with open(path, 'r') as f:
+                  content = f.read()
+              for old, new in replacements:
+                  assert old in content, f"Target tidak ditemukan di {path}: {old}"
+                  content = content.replace(old, new, 1)
+              with open(path, 'w') as f:
+                  f.write(content)
+              print(f"Patched {path} OK")
+
+          # 1. fs/exec.c
+          patch_file('fs/exec.c', [
+              ('static int do_execveat_common(',
+               '#ifdef CONFIG_KSU\nextern bool ksu_execveat_hook __read_mostly;\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif\n\nstatic int do_execveat_common('),
+              ('\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);',
+               '\tif (IS_ERR(filename))\n\t\treturn PTR_ERR(filename);\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_execveat_hook))\n\t\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\telse\n\t\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif')
+          ])
+
+          # 2. fs/open.c
+          patch_file('fs/open.c', [
+              ('long do_faccessat(',
+               '#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n\nlong do_faccessat('),
+              ('\tunsigned int lookup_flags = LOOKUP_FOLLOW;',
+               '\tunsigned int lookup_flags = LOOKUP_FOLLOW;\n\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif')
+          ])
+
+          # 3. fs/read_write.c
+          patch_file('fs/read_write.c', [
+              ('ssize_t vfs_read(',
+               '#ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos);\n#endif\n\nssize_t vfs_read('),
+              ('\tssize_t ret;',
+               '\tssize_t ret;\n\n#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_vfs_read(&file, &buf, &count, &pos);\n#endif')
+          ])
+
+          # 4. fs/stat.c
+          patch_file('fs/stat.c', [
+              ('int vfs_statx(',
+               '#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif\n\nint vfs_statx('),
+              ('\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;',
+               '\tunsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;\n\n#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flags);\n#endif')
+          ])
+
+          # 5. drivers/input/input.c
+          patch_file('drivers/input/input.c', [
+              ('void input_event(',
+               '#ifdef CONFIG_KSU\nextern bool ksu_input_hook __read_mostly;\nextern int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code, int *value);\n#endif\n\nvoid input_event('),
+              ('\tif (is_event_supported(type, dev->evbit, EV_MAX)) {',
+               '\tif (is_event_supported(type, dev->evbit, EV_MAX)) {\n#ifdef CONFIG_KSU\n\t\tif (unlikely(ksu_input_hook))\n\t\t\tksu_handle_input_handle_event(&type, &code, &value);\n#endif')
+          ])
+
+          # 6. fs/namespace.c (backport path_umount jika belum ada)
+          with open('fs/namespace.c', 'r') as f:
+              ns = f.read()
+          if 'path_umount(' not in ns:
+              umount_code = """#ifdef CONFIG_KSU
+          static int can_umount(const struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+          		return -EINVAL;
+          	if (!may_mount())
+          		return -EPERM;
+          	if (path->dentry != path->mnt->mnt_root)
+          		return -EINVAL;
+          	if (!check_mnt(mnt))
+          		return -EINVAL;
+          	if (mnt->mnt.mnt_flags & MNT_LOCKED)
+          		return -EINVAL;
+          	if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
+          		return -EPERM;
+          	return 0;
+          }
+
+          int path_umount(struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	int ret = can_umount(path, flags);
+          	if (!ret)
+          		ret = do_umount(mnt, flags);
+          	dput(path->dentry);
+          	mntput_no_expire(mnt);
+          	return ret;
+          }
+          #endif
+
+          SYSCALL_DEFINE2(umount,"""
+              assert 'SYSCALL_DEFINE2(umount,' in ns, "SYSCALL_DEFINE2(umount) tidak ditemukan"
+              ns = ns.replace('SYSCALL_DEFINE2(umount,', umount_code, 1)
+              with open('fs/namespace.c', 'w') as f:
+                  f.write(ns)
+              print("Patched fs/namespace.c OK")
+          EOF
+          fi
+
+      - name: Build Kernel
         run: |
           export PATH="$PWD/clang/bin:$PATH"
           export ARCH=arm64
@@ -53,7 +162,6 @@ jobs:
 
           cd anykernel
 
-          # 1. Buat Banner TWRP / OrangeFox
           cat << 'EOF' > banner
             __  __           _                 _  __                    _ 
            |  \/  | __ _  __| | __ _ _ __ __ _| |/ /___ _ __ _ __   ___| |
@@ -61,11 +169,10 @@ jobs:
            | |  | | (_| | (_| | (_| | | | (_| | . \  __/ |  | | | |  __/ |
            |_|  |_|\__,_|\__,_|\__,_|_|  \__,_|_|\_\___|_|  |_| |_|\___|_|
                                                                           
-             madaraKernel 4.19.325 | Unified Blossom | by @zexxadev
+             madaraKernel 4.19.325 (${{ matrix.variant }}) | Unified Blossom | by @zexxadev
           EOF
 
-          # 2. Konfigurasi Device & Hapus Limit Versi Android
-          sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 by @zexxadev/g' anykernel.sh
+          sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev/g' anykernel.sh
           sed -i 's/do.devicecheck=.*/do.devicecheck=1/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=dandelion/g' anykernel.sh
           sed -i 's/device.name2=.*/device.name2=blossom/g' anykernel.sh
@@ -75,7 +182,6 @@ jobs:
           sed -i 's|block=.*|block=auto;|g' anykernel.sh
           sed -i 's/is_slot_device=.*/is_slot_device=0;/g' anykernel.sh
 
-          # 3. Suntik Runtime Tweak (VM RAM 2GB + TCP BBR + I/O) ke Ramdisk
           cat << 'EOF' > ramdisk/init.madara.rc
           on property:sys.boot_completed=1
               write /proc/sys/vm/swappiness 120
@@ -88,10 +194,9 @@ jobs:
           EOF
           chmod 0750 ramdisk/init.madara.rc
 
-          # Pastikan init.rc nge-load init.madara.rc
           sed -i '/## AnyKernel methods/i import_initrc /init.madara.rc;' anykernel.sh
 
-          ZIP_NAME="madaraKernel-blossom-NonKSU-$(date +%Y%m%d).zip"
+          ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
           zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
