@@ -3,6 +3,9 @@ name: Build madaraKernel Blossom (Dual-Variant)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build (${{ matrix.variant }})
@@ -548,15 +551,33 @@ jobs:
             '/dump_boot;/a import_initrc /init.madara.rc;' \
             anykernel.sh
 
-          ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
+          ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }} SusFS-$(date +%Y%m%d).zip"
 
           zip -r9 "../$ZIP_NAME" * \
             -x .git README.md *placeholder
 
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      - name: Upload Kernel Artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ env.ZIP_NAME }}
+          tag_name: madara-b${{ github.run_number }}
+          name: madaraKernel Blossom (Build #${{ github.run_number }})
+          files: ${{ env.ZIP_NAME }}
+          prerelease: true
+
+      - name: Send Flashable ZIP to Telegram
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          MD5_HASH=$(md5sum "${{ env.ZIP_NAME }}" | awk '{print $1}')
+
+          CAPTION="<b>madaraKernel (${{ matrix.variant }})</b>
+          MD5: <code>${MD5_HASH}</code>"
+
+          curl -sS --fail-with-body -F "chat_id=${TG_CHAT_ID}" \
+               -F "document=@${{ env.ZIP_NAME }}" \
+               -F "caption=${CAPTION}" \
+               -F "parse_mode=HTML" \
+               "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" > /dev/null
