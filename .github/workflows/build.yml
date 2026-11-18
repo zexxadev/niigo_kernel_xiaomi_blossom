@@ -491,24 +491,61 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          ZIP_NAME: ${{ env.ZIP_NAME }}
+          VARIANT: ${{ matrix.variant }}
         run: |
-          FILE_PATH=$(find "$GITHUB_WORKSPACE" -maxdepth 2 -name "${{ env.ZIP_NAME }}" | head -n 1)
+          python3 - << 'EOF'
+          import glob
+          import hashlib
+          import os
+          import sys
+          import urllib.request
+          import uuid
 
-          if [ -z "$FILE_PATH" ] || [ ! -f "$FILE_PATH" ]; then
-            echo "ERROR: File ZIP tidak ditemukan!"
-            exit 1
-          fi
+          workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+          zip_name = os.environ["ZIP_NAME"]
+          matches = glob.glob(os.path.join(workspace, "**", zip_name), recursive=True)
 
-          cd "$(dirname "$FILE_PATH")"
-          ZIP_FILE="$(basename "$FILE_PATH")"
-          MD5_HASH=$(md5sum "$ZIP_FILE" | awk '{print $1}')
+          if not matches:
+              sys.exit(f"ERROR: File {zip_name} tidak ditemukan di {workspace}")
 
-          CAPTION="<b>madaraKernel (${{ matrix.variant }})</b>
-          MD5: <code>${MD5_HASH}</code>"
+          file_path = matches[0]
+          with open(file_path, "rb") as f:
+              file_data = f.read()
 
-          /usr/bin/curl -sS --fail-with-body \
-               -F "chat_id=${TG_CHAT_ID}" \
-               -F "document=@${ZIP_FILE};type=application/zip" \
-               -F "caption=${CAPTION}" \
-               -F "parse_mode=HTML" \
-               "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" > /dev/null
+          md5_hash = hashlib.md5(file_data).hexdigest()
+          caption = f"<b>madaraKernel ({os.environ['VARIANT']})</b>\nMD5: <code>{md5_hash}</code>"
+
+          boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
+          body = bytearray()
+
+          fields = {
+              "chat_id": os.environ["TG_CHAT_ID"],
+              "caption": caption,
+              "parse_mode": "HTML",
+          }
+
+          for key, val in fields.items():
+              body.extend(f"--{boundary}\r\n".encode())
+              body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n{val}\r\n'.encode())
+
+          body.extend(f"--{boundary}\r\n".encode())
+          body.extend(
+              f'Content-Disposition: form-data; name="document"; filename="{os.path.basename(file_path)}"\r\n'
+              f"Content-Type: application/zip\r\n\r\n".encode()
+          )
+          body.extend(file_data)
+          body.extend(f"\r\n--{boundary}--\r\n".encode())
+
+          url = f"https://api.telegram.org/bot{os.environ['TG_BOT_TOKEN']}/sendDocument"
+          req = urllib.request.Request(url, data=bytes(body))
+          req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  print("Telegram upload sukses:", resp.status)
+          except Exception as e:
+              if hasattr(e, "read"):
+                  print("Telegram API Error:", e.read().decode())
+              sys.exit(f"Gagal kirim ke Telegram: {e}")
+          EOF
