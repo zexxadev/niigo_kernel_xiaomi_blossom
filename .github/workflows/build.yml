@@ -465,11 +465,52 @@ jobs:
 
           cd anykernel
 
-          sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev/g' anykernel.sh
+          cat << 'EOF' > anykernel.sh
+          ### AnyKernel3 Ramdisk Mod Script
+          ## osm0sis @ xda-developers
+
+          ### AnyKernel setup
+          properties() { '
+          kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=blossom
+          device.name2=dandelion
+          device.name3=angelica
+          device.name4=cattail
+          supported.versions=
+          supported.patchlevels=
+          '; }
+
+          ### AnyKernel install
+          block=/dev/block/by-name/boot;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+
+          . tools/ak3-core.sh;
+
+          dump_boot;
+
+          # Pasang init.madara.rc dan madara_gps.conf ke /system/etc/init/ (SAR Android 11-16)
+          mount -o rw,remount /system 2>/dev/null || mount -o rw,remount /system_root 2>/dev/null;
+          SYS_INIT="/system/etc/init";
+          [ -d "/system_root/system/etc/init" ] && SYS_INIT="/system_root/system/etc/init";
+          mkdir -p "$SYS_INIT";
+          cp -f /tmp/anykernel/ramdisk/init.madara.rc "$SYS_INIT/init.madara.rc";
+          cp -f /tmp/anykernel/ramdisk/madara_gps.conf "$SYS_INIT/madara_gps.conf";
+          chmod 0644 "$SYS_INIT/init.madara.rc" "$SYS_INIT/madara_gps.conf";
+          chown 0:0 "$SYS_INIT/init.madara.rc" "$SYS_INIT/madara_gps.conf";
+
+          write_boot;
+          ## end install
+          EOF
 
           mkdir -p ramdisk
 
-          # Konfigurasi GPS Fast-Lock (NTP Indonesia & SUPL Google)
           cat << 'EOF' > ramdisk/madara_gps.conf
           NTP_SERVER=id.pool.ntp.org
           NTP_SERVER=0.id.pool.ntp.org
@@ -532,11 +573,9 @@ jobs:
               write /proc/perfmgr/boost_ctrl/eas_ctrl/perfserv_ta_uclamp_min 15
 
               # Systemless GPS Fast-Lock Mount
-              exec - root root -- /system/bin/mount --bind /madara_gps.conf /vendor/etc/gps.conf
+              exec - root root -- /system/bin/mount --bind /system/etc/init/madara_gps.conf /vendor/etc/gps.conf
           EOF
-
-          chmod 0750 ramdisk/init.madara.rc
-          grep -q "init.madara.rc" anykernel.sh || sed -i '/dump_boot;/a import_initrc /init.madara.rc;' anykernel.sh
+          chmod 0644 ramdisk/init.madara.rc
 
           ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
           zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
