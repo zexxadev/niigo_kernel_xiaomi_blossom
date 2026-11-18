@@ -405,12 +405,10 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_BUILD_USER="ZexxaDev"
           export KBUILD_BUILD_HOST="GitHubActions"
-          export LOCALVERSION="-madaraKernel"
+          export LOCALVERSION="+"
 
           # Tambahan Defconfig: Network BBR, NOOP I/O, Deep Sleep & Power Efficiency
           cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
-          CONFIG_LOCALVERSION="-madaraKernel"
-          # CONFIG_LOCALVERSION_AUTO is not set
           CONFIG_TCP_CONG_ADVANCED=y
           CONFIG_TCP_CONG_BBR=y
           CONFIG_DEFAULT_BBR=y
