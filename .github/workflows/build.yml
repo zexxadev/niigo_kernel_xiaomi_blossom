@@ -551,7 +551,7 @@ jobs:
             '/dump_boot;/a import_initrc /init.madara.rc;' \
             anykernel.sh
 
-          ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }} SusFS-$(date +%Y%m%d).zip"
+          ZIP_NAME="madaraKernel-blossom-${{ matrix.variant }}-$(date +%Y%m%d).zip"
 
           zip -r9 "../$ZIP_NAME" * \
             -x .git README.md *placeholder
