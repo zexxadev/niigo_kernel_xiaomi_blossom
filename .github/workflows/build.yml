@@ -73,44 +73,57 @@ jobs:
               with open(feat_file, 'w') as f:
                   f.write(feat_new)
 
-          # 2. GPU Overclock PowerVR GE8320 -> 730 MHz (730000 kHz)
+          # 2. GPU Overclock PowerVR GE8320 -> 730 MHz
           gpu_patched = False
-          search_dirs = [
-              'drivers/misc/mediatek/base/power/**/*.[ch]',
-              'drivers/misc/mediatek/gpu/**/*.[ch]',
-          ]
-          candidates = []
-          for pattern in search_dirs:
-              candidates.extend(glob.glob(pattern, recursive=True))
 
-          for path in candidates:
-              if 'cpufreq' in path:
-                  continue
-              with open(path, 'r', errors='ignore') as f:
-                  txt = f.read()
+          # Cari di seluruh drivers/ (gpu_rgx, gpufreq, mtk_mfgsys, dll)
+          for pattern in ['drivers/misc/mediatek/**/*.[ch]', 'drivers/gpu/**/*.[ch]']:
+              for path in glob.glob(pattern, recursive=True):
+                  if 'cpufreq' in path or 'eem' in path:
+                      continue
+                  with open(path, 'r', errors='ignore') as f:
+                      txt = f.read()
 
-              if not any(k in txt for k in ('GPU_DVFS', 'gpufreq', 'rgx', '650000')):
-                  continue
+                  if not any(k in txt for k in ('GPU_DVFS', 'gpufreq', 'mtk_gpufreq', 'rgx_mtk', 'mfg')):
+                      continue
 
-              new_txt, n2 = re.subn(
-                  r'(#define\s+(?:SEG_)?GPU_DVFS_FREQ0\s*\(?\s*)(?:650000|600000|520000)(\s*\)?)',
-                  r'\g<1>730000\g<2>',
-                  txt
-              )
-              if not n2 and ('gpu' in path.lower() or 'GPU_DVFS' in txt):
-                  new_txt, n2 = re.subn(r'\b650000\b', '730000', txt)
+                  # Cek makro GPU_DVFS_FREQ0 atau tabel OPP 650000 / 600000
+                  new_txt, n2 = re.subn(
+                      r'(#define\s+(?:SEG_)?GPU_DVFS_FREQ0\s*\(?\s*)(?:650000|600000|520000)(\s*\)?)',
+                      r'\g<1>730000\g<2>',
+                      txt
+                  )
+                  if not n2 and ('gpu' in path.lower() or 'mfg' in path.lower()):
+                      new_txt, n2 = re.subn(r'\b650000\b', '730000', txt)
 
-              if n2:
-                  with open(path, 'w') as f:
-                      f.write(new_txt)
-                  print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
-                  gpu_patched = True
+                  if n2:
+                      with open(path, 'w') as f:
+                          f.write(new_txt)
+                      print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
+                      gpu_patched = True
+
+          # Cek juga Device Tree (.dts / .dtsi) untuk opp-hz GPU (650 MHz = 650000000 Hz)
+          for dts in glob.glob('arch/arm64/boot/dts/**/*.dts*', recursive=True):
+              with open(dts, 'r', errors='ignore') as f:
+                  d_txt = f.read()
+              if '650000000' in d_txt and ('gpu' in d_txt.lower() or 'mfg' in d_txt.lower()):
+                  d_new, n_dts = re.subn(r'\b650000000\b', '730000000', d_txt)
+                  if n_dts:
+                      with open(dts, 'w') as f:
+                          f.write(d_new)
+                      print(f"Patched GPU DTS OPP 730MHz in {dts} ({n_dts} entries) OK")
+                      gpu_patched = True
 
           if not gpu_patched:
-              print("PERINGATAN: Tabel GPU belum ketemu, cek daftar file di base/power/mt6765 & gpu:")
-              for p in sorted(candidates):
-                  if 'mt6765' in p or 'dvfs' in p.lower() or 'opp' in p.lower():
-                      print(" -", p)
+              print("PERINGATAN: Tabel GPU belum ter-patch. Lokasi file/baris kandidat GPU:")
+              for pattern in ['drivers/misc/mediatek/**/*.[ch]', 'drivers/gpu/**/*.[ch]', 'arch/arm64/boot/dts/**/*.dts*']:
+                  for p in glob.glob(pattern, recursive=True):
+                      if any(k in p.lower() for k in ('gpufreq', 'rgx', 'mfg')):
+                          print(" - FILE:", p)
+                      with open(p, 'r', errors='ignore') as f:
+                          for idx, line in enumerate(f, 1):
+                              if 'GPU_DVFS_FREQ' in line or '650000000' in line:
+                                  print(f"   {p}:{idx}: {line.strip()}")
 
           # 3. CPU Overclock Little Cluster (1.5 GHz -> 1.8 GHz)
           for cpu_f in glob.glob(
