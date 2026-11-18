@@ -30,7 +30,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Apply Performance & GPU OC Patches
+      - name: Apply Performance, GPU OC & Deep Sleep Patches
         run: |
           python3 - << 'EOF'
           import glob
@@ -76,7 +76,6 @@ jobs:
           # 2. GPU Overclock PowerVR GE8320 -> 730 MHz
           gpu_patched = False
 
-          # Cari di seluruh drivers/ (gpu_rgx, gpufreq, mtk_mfgsys, dll)
           for pattern in ['drivers/misc/mediatek/**/*.[ch]', 'drivers/gpu/**/*.[ch]']:
               for path in glob.glob(pattern, recursive=True):
                   if 'cpufreq' in path or 'eem' in path:
@@ -87,7 +86,6 @@ jobs:
                   if not any(k in txt for k in ('GPU_DVFS', 'gpufreq', 'mtk_gpufreq', 'rgx_mtk', 'mfg')):
                       continue
 
-                  # Cek makro GPU_DVFS_FREQ0 atau tabel OPP 650000 / 600000
                   new_txt, n2 = re.subn(
                       r'(#define\s+(?:SEG_)?GPU_DVFS_FREQ0\s*\(?\s*)(?:650000|600000|520000)(\s*\)?)',
                       r'\g<1>730000\g<2>',
@@ -102,7 +100,6 @@ jobs:
                       print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
                       gpu_patched = True
 
-          # Cek juga Device Tree (.dts / .dtsi) untuk opp-hz GPU (650 MHz = 650000000 Hz)
           for dts in glob.glob('arch/arm64/boot/dts/**/*.dts*', recursive=True):
               with open(dts, 'r', errors='ignore') as f:
                   d_txt = f.read()
@@ -115,15 +112,7 @@ jobs:
                       gpu_patched = True
 
           if not gpu_patched:
-              print("PERINGATAN: Tabel GPU belum ter-patch. Lokasi file/baris kandidat GPU:")
-              for pattern in ['drivers/misc/mediatek/**/*.[ch]', 'drivers/gpu/**/*.[ch]', 'arch/arm64/boot/dts/**/*.dts*']:
-                  for p in glob.glob(pattern, recursive=True):
-                      if any(k in p.lower() for k in ('gpufreq', 'rgx', 'mfg')):
-                          print(" - FILE:", p)
-                      with open(p, 'r', errors='ignore') as f:
-                          for idx, line in enumerate(f, 1):
-                              if 'GPU_DVFS_FREQ' in line or '650000000' in line:
-                                  print(f"   {p}:{idx}: {line.strip()}")
+              print("PERINGATAN: Tabel GPU belum ter-patch.")
 
           # 3. CPU Overclock Little Cluster (1.5 GHz -> 1.8 GHz)
           for cpu_f in glob.glob(
@@ -139,6 +128,39 @@ jobs:
                   with open(cpu_f, 'w') as f:
                       f.write(new_c)
                   print(f"Patched Little CPU OC (1.8GHz) in {cpu_f} OK")
+
+          # 4. Deep Sleep Wakelock Blocker (Blokir wakelock noisy MTK/WiFi saat idle)
+          wakeup_file = 'drivers/base/power/wakeup.c'
+          with open(wakeup_file, 'r') as f:
+              w_code = f.read()
+
+          blocker_fn = (
+              'static bool madara_is_blocked_wakelock(const char *name)\n'
+              '{\n'
+              '\tif (!name)\n'
+              '\t\treturn false;\n'
+              '\tif (!strcmp(name, "NETLINK") ||\n'
+              '\t    !strcmp(name, "wlan_rx_wake") ||\n'
+              '\t    !strcmp(name, "wlan_ctrl_wake") ||\n'
+              '\t    !strcmp(name, "wlan_wake") ||\n'
+              '\t    !strcmp(name, "SensorService") ||\n'
+              '\t    !strncmp(name, "eventpoll", 9))\n'
+              '\t\treturn true;\n'
+              '\treturn false;\n'
+              '}\n\n'
+          )
+
+          if 'madara_is_blocked_wakelock' not in w_code:
+              w_new, nw = re.subn(
+                  r'(static\s+void\s+wakeup_source_activate\s*\(\s*struct\s+wakeup_source\s*\*\s*ws\s*\)\s*\{)',
+                  blocker_fn + r'\1\n\tif (madara_is_blocked_wakelock(ws->name))\n\t\treturn;',
+                  w_code,
+                  count=1
+              )
+              if nw:
+                  with open(wakeup_file, 'w') as f:
+                      f.write(w_new)
+                  print("Patched Deep Sleep Wakelock Blocker in drivers/base/power/wakeup.c OK")
           EOF
 
       - name: Setup Variant (${{ matrix.variant }})
@@ -384,6 +406,20 @@ jobs:
           export KBUILD_BUILD_USER="ZexxaDev"
           export KBUILD_BUILD_HOST="GitHubActions"
 
+          # Tambahan Defconfig: Network BBR, NOOP I/O, Deep Sleep & Power Efficiency
+          cat << 'EOF' >> arch/arm64/configs/blossom_defconfig
+          CONFIG_TCP_CONG_ADVANCED=y
+          CONFIG_TCP_CONG_BBR=y
+          CONFIG_DEFAULT_BBR=y
+          CONFIG_NET_SCH_FQ=y
+          CONFIG_IOSCHED_NOOP=y
+          CONFIG_DEFAULT_NOOP=y
+          CONFIG_PM_AUTOSLEEP=y
+          CONFIG_PM_WAKELOCKS=y
+          CONFIG_ENERGY_MODEL=y
+          CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
+          EOF
+
           make -j$(nproc --all) O=out ARCH=arm64 blossom_defconfig
 
           if [ "${{ matrix.variant }}" == "RSKSU-SusFS" ]; then
@@ -428,16 +464,40 @@ jobs:
 
           cd anykernel
 
-          # Sesuaikan nama varian dinamis (Vanilla / RSKSU-SusFS) pada banner flash
           sed -i 's/kernel.string=.*/kernel.string=madaraKernel 4.19.325 (${{ matrix.variant }}) by @zexxadev/g' anykernel.sh
 
           mkdir -p ramdisk
+
+          # Konfigurasi GPS Fast-Lock (NTP Indonesia & SUPL Google)
+          cat << 'EOF' > ramdisk/madara_gps.conf
+          NTP_SERVER=id.pool.ntp.org
+          NTP_SERVER=0.id.pool.ntp.org
+          NTP_SERVER=1.id.pool.ntp.org
+          NTP_SERVER=asia.pool.ntp.org
+          XTRA_SERVER_1=https://xtrapath1.izatcloud.net/xtra3grc.bin
+          XTRA_SERVER_2=https://xtrapath2.izatcloud.net/xtra3grc.bin
+          XTRA_SERVER_3=https://xtrapath3.izatcloud.net/xtra3grc.bin
+          SUPL_HOST=supl.google.com
+          SUPL_PORT=7275
+          SUPL_VER=0x20000
+          SUPL_MODE=1
+          LPP_PROFILE=2
+          NMEA_PROVIDER=0
+          A_GLONASS_POS_PROTOCOL_SELECT=0
+          INTERMEDIATE_POS=1
+          ACCURACY_THRES=5000
+          EOF
+          chmod 0644 ramdisk/madara_gps.conf
+
           cat << 'EOF' > ramdisk/init.madara.rc
           on property:sys.boot_completed=1
               # VM & Memory (RAM 2GB + ZRAM LZ4)
               write /proc/sys/vm/swappiness 120
               write /proc/sys/vm/vfs_cache_pressure 100
               write /proc/sys/vm/page-cluster 0
+              write /proc/sys/vm/dirty_ratio 15
+              write /proc/sys/vm/dirty_background_ratio 5
+              write /proc/sys/vm/extra_free_kbytes 24300
 
               # Network Gaming (TCP BBR + FQ + Fast Open)
               write /proc/sys/net/core/default_qdisc fq
@@ -454,6 +514,11 @@ jobs:
               write /proc/ppm/policy_status "2 0"
               write /proc/ppm/policy_status "3 0"
 
+              # Deep Sleep & Battery Idle Efficiency
+              write /sys/power/mem_sleep "deep"
+              write /sys/module/workqueue/parameters/power_efficient Y
+              write /proc/sys/kernel/timer_migration 0
+
               # Instant Wakeup & Schedutil Fast Ramp-Up
               write /sys/power/sync_on_suspend 0
               write /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us 500
@@ -464,6 +529,9 @@ jobs:
               write /sys/devices/system/cpu/cpufreq/schedutil/hispeed_load 75
               write /proc/perfmgr/tchbst/user/usrtch 1
               write /proc/perfmgr/boost_ctrl/eas_ctrl/perfserv_ta_uclamp_min 15
+
+              # Systemless GPS Fast-Lock Mount
+              exec - root root -- /system/bin/mount --bind /madara_gps.conf /vendor/etc/gps.conf
           EOF
 
           chmod 0750 ramdisk/init.madara.rc
