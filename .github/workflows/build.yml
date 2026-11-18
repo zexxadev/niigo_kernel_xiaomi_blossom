@@ -80,36 +80,42 @@ jobs:
 
           # 2. GPU Overclock PowerVR GE8320 -> 730 MHz (730000 kHz)
           gpu_patched = False
-          gpu_files = glob.glob('drivers/misc/mediatek/**/*gpu*.[ch]', recursive=True)
-          target_gpu = [p for p in gpu_files if ('mt6765' in p or 'mt6762' in p) and 'gpufreq' in p] or \
-                       [p for p in gpu_files if 'gpufreq' in p]
+          search_dirs = [
+              'drivers/misc/mediatek/base/power/**/*.[ch]',
+              'drivers/misc/mediatek/gpu/**/*.[ch]',
+          ]
+          candidates = []
+          for pattern in search_dirs:
+              candidates.extend(glob.glob(pattern, recursive=True))
 
-          for path in target_gpu:
+          for path in candidates:
+              if 'cpufreq' in path:
+                  continue
               with open(path, 'r', errors='ignore') as f:
-                  gpu = f.read()
+                  txt = f.read()
 
-              # Tangkap makro FREQ0 (650000 / 600000 / 520000) atau angka 650000 di tabel OPP
-              gpu_new, n2 = re.subn(
+              if not any(k in txt for k in ('GPU_DVFS', 'gpufreq', 'rgx', '650000')):
+                  continue
+
+              new_txt, n2 = re.subn(
                   r'(#define\s+(?:SEG_)?GPU_DVFS_FREQ0\s*\(?\s*)(?:650000|600000|520000)(\s*\)?)',
                   r'\g<1>730000\g<2>',
-                  gpu
+                  txt
               )
-              if not n2:
-                  gpu_new, n2 = re.subn(r'\b650000\b', '730000', gpu)
+              if not n2 and ('gpu' in path.lower() or 'GPU_DVFS' in txt):
+                  new_txt, n2 = re.subn(r'\b650000\b', '730000', txt)
 
               if n2:
                   with open(path, 'w') as f:
-                      f.write(gpu_new)
+                      f.write(new_txt)
                   print(f"Patched GPU OC 730MHz in {path} ({n2} entries) OK")
                   gpu_patched = True
 
           if not gpu_patched:
-              print("PERINGATAN: Tabel GPU belum ter-patch. File gpufreq ditemukan:", target_gpu)
-              for path in target_gpu:
-                  with open(path, 'r', errors='ignore') as f:
-                      for i, line in enumerate(f, 1):
-                          if 'FREQ0' in line or '600000' in line or '520000' in line:
-                              print(f"  {path}:{i}: {line.strip()}")
+              print("PERINGATAN: Tabel GPU belum ketemu, cek daftar file di base/power/mt6765 & gpu:")
+              for p in sorted(candidates):
+                  if 'mt6765' in p or 'dvfs' in p.lower() or 'opp' in p.lower():
+                      print(" -", p)
 
           # 3. CPU Overclock +300 MHz
           for cpu_f in glob.glob(
