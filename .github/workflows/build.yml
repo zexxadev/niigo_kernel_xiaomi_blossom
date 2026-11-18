@@ -572,18 +572,26 @@ jobs:
           files: ${{ env.ZIP_NAME }}
           prerelease: true
 
-      - name: Send Flashable ZIP to Telegram
+      - name: Send Flashable ZIP & MD5 to Telegram
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MD5_HASH=$(md5sum "${{ env.ZIP_NAME }}" | awk '{print $1}')
+          FILE_PATH=$(find "$GITHUB_WORKSPACE" -maxdepth 2 -name "${{ env.ZIP_NAME }}" | head -n 1)
+
+          if [ -z "$FILE_PATH" ] || [ ! -f "$FILE_PATH" ]; then
+            echo "ERROR: File ZIP tidak ditemukan!"
+            find "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.zip"
+            exit 1
+          fi
+
+          MD5_HASH=$(md5sum "$FILE_PATH" | awk '{print $1}')
 
           CAPTION="<b>madaraKernel (${{ matrix.variant }})</b>
           MD5: <code>${MD5_HASH}</code>"
 
           curl -sS --fail-with-body -F "chat_id=${TG_CHAT_ID}" \
-               -F "document=@${{ env.ZIP_NAME }}" \
+               -F "document=@${FILE_PATH}" \
                -F "caption=${CAPTION}" \
                -F "parse_mode=HTML" \
                "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" > /dev/null
