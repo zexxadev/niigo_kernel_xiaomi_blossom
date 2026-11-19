@@ -1,7 +1,5 @@
 #include <linux/cgroup.h>
 static inline bool cgroup_psi_enabled(void) { return true; }
-#include <linux/cgroup.h>
-static inline bool cgroup_psi_enabled(void) { return true; }
 /*
  * Pressure stall information for CPU, memory and IO
  *
