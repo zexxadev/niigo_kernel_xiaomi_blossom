@@ -708,7 +708,7 @@ static int wdt87xx_write_firmware(struct i2c_client *client, const void *chunk)
 		goto out_enable_reporting;
 	}
 
-	udelay(4000);
+	mdelay(10);
 
 	while (size) {
 		dev_dbg(&client->dev, "%s: %x, %x\n", __func__,
@@ -772,7 +772,7 @@ out_lock_device:
 	if (err1)
 		dev_err(&client->dev, "lock failed\n");
 
-	udelay(4000);
+	mdelay(10);
 
 out_enable_reporting:
 	err1 = wdt87xx_send_command(client, VND_CMD_START, 0);

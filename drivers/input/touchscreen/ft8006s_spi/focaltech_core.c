@@ -236,7 +236,7 @@ void fts_hid2std(void)
     if (ret < 0) {
         FTS_ERROR("hid2std cmd write fail");
     } else {
-        usleep_range(4000, 4500);
+        msleep(10);
         buf[0] = buf[1] = buf[2] = 0;
         ret = fts_read(NULL, 0, buf, 3);
         if (ret < 0) {

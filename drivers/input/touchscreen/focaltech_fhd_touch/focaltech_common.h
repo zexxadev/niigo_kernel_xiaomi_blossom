@@ -68,7 +68,7 @@
 #define INVALID                             0
 #define FTS_CMD_START1                      0x55
 #define FTS_CMD_START2                      0xAA
-#define FTS_CMD_START_DELAY                 4
+#define FTS_CMD_START_DELAY                 10
 #define FTS_CMD_READ_ID                     0x90
 #define FTS_CMD_READ_ID_LEN                 4
 #define FTS_CMD_READ_ID_LEN_INCELL          1

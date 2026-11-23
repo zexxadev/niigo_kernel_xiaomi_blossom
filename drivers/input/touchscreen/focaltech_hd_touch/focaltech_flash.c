@@ -171,7 +171,7 @@ static int fts_fwupg_reset_to_romboot(struct fts_upgrade *upg)
 		FTS_ERROR("pram/rom/bootloader reset cmd write fail");
 		return ret;
 	}
-	udelay(4000);
+	mdelay(10);
 
 	for (i = 0; i < FTS_UPGRADE_LOOP; i++) {
 		ret = fts_fwupg_get_boot_state(upg, &state);

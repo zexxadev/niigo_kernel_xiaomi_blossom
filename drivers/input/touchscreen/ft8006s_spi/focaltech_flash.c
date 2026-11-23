@@ -968,7 +968,7 @@ int fts_fw_recovery(void)
         FTS_ERROR("fts_fw_resume fail");
         return ret;
     }
-    usleep_range(4000, 4500);
+    msleep(10);
     ret = fts_read_reg(FTS_REG_CHIP_ID, &chip_id);
     FTS_INFO("read chip id:0x%02x", chip_id);
 

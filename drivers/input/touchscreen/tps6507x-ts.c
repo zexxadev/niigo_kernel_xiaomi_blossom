@@ -138,7 +138,7 @@ static s32 tps6507x_adc_standby(struct tps6507x_ts *tsc)
 		return ret;
 
 	while (val & TPS6507X_REG_TSC_INT) {
-		udelay(4000);
+		mdelay(10);
 		ret = tps6507x_read_u8(tsc, TPS6507X_REG_INT, &val);
 		if (ret)
 			return ret;
