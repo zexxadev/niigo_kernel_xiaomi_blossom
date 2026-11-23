@@ -248,7 +248,7 @@ void madara_disable_ppm_policies(void)
 
 	ppm_lock(&ppm_main_info.lock);
 	list_for_each_entry(l_pos, &ppm_main_info.policy_list, link) {
-		if (l_pos->policy >= 1 && l_pos->policy <= 3 && l_pos->is_enabled) {
+		if (l_pos->policy >= 1 && l_pos->policy <= 2 && l_pos->is_enabled) {
 			ppm_lock(&l_pos->lock);
 			l_pos->is_enabled = false;
 			if (l_pos->status_change_cb)
@@ -290,7 +290,7 @@ static ssize_t ppm_policy_status_proc_write(struct file *file,
 	if (sscanf(buf, "%d %d", &policy_idx, &enabled) == 2) {
 		if (enabled > 1)
 			enabled = 1;
-		if (policy_idx >= 1 && policy_idx <= 3)
+		if (policy_idx >= 1 && policy_idx <= 2)
 			enabled = 0;
 
 		/* set mode status and notify policy via status change cb */

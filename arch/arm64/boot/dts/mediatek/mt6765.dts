@@ -3400,10 +3400,10 @@ firmware_class.path=/vendor/firmware";
 		/* charging current */
 		usb_charger_current = <500000>;
 		ac_charger_current = <2050000>;
-		ac_charger_input_current = <2400000>;
-		non_std_ac_charger_current = <2000000>;
-		charging_host_charger_current = <2000000>;
-		ta_ac_charger_current = <2050000>;
+		ac_charger_input_current = <3200000>;
+		non_std_ac_charger_current = <1020000>;
+		charging_host_charger_current = <1500000>;
+		ta_ac_charger_current = <3000000>;
 		pd_charger_current = <500000>;
 
 		/* battery temperature protection */
@@ -3525,7 +3525,7 @@ firmware_class.path=/vendor/firmware";
 		charger_configuration= <0>;
 
 		/* common */
-		battery_cv = <4400000>;
+		battery_cv = <4368000>;
 		max_charger_voltage = <6500000>;
 		min_charger_voltage = <4420000>;
 
@@ -3533,7 +3533,7 @@ firmware_class.path=/vendor/firmware";
 		enable_sw_jeita;
 		jeita_temp_above_t4_cv = <4200000>;
 		jeita_temp_above_t4_cv_lc = <4100000>;
-		jeita_temp_t3_to_t4_cv = <4250000>;
+		jeita_temp_t3_to_t4_cv = <4200000>;
 		jeita_temp_t3_to_t4_cv_lc = <4100000>;
 		jeita_temp_t2_to_t3_cv = <4400000>;
 		jeita_temp_t1_to_t2_cv = <4400000>;
@@ -3568,7 +3568,7 @@ firmware_class.path=/vendor/firmware";
 		usb_charger_current = <500000>;
 		ac_charger_current = <2050000>;
 		ac_charger_input_current = <2400000>;
-		charging_host_charger_current = <2000000>;
+		charging_host_charger_current = <1500000>;
 
 		/* dynamic mivr */
 		/* enable_dynamic_mivr; */

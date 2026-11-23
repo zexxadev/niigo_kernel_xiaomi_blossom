@@ -499,6 +499,49 @@ static bool wakeup_source_not_registered(struct wakeup_source *ws)
 }
 
 /*
+ * madara: batasi berapa lama wakeup source tertentu boleh menahan sistem
+ * tetap bangun.
+ *
+ * WLAN RX, netlink, sensor, dan epoll sering ditahan jauh lebih lama dari yang
+ * dibutuhkan untuk menyerahkan event ke userspace, sehingga SoC tidak masuk
+ * deep sleep. Memblokirnya total membuat notifikasi telat, jadi source tetap
+ * diaktifkan normal (event tetap terkirim) tetapi dipaksa kadaluarsa dalam
+ * waktu singkat. Batas diperbarui oleh setiap event baru, jadi trafik yang
+ * terus mengalir tetap menahan sistem bangun.
+ *
+ * Mengembalikan batas dalam ms, atau 0 jika source tidak dibatasi.
+ */
+static unsigned int madara_wakelock_cap_ms(const char *name)
+{
+	if (!name)
+		return 0;
+	if (!strcmp(name, "wlan_rx_wake") || !strcmp(name, "wlan_wake"))
+		return 1000;
+	if (!strcmp(name, "wlan_ctrl_wake") || !strcmp(name, "NETLINK"))
+		return 500;
+	if (!strcmp(name, "SensorService") || !strncmp(name, "eventpoll", 9))
+		return 1000;
+	return 0;
+}
+
+/* Pasang timer batas untuk wakeup source bergaya "stay awake". */
+static void madara_cap_wakeup_source(struct wakeup_source *ws)
+{
+	unsigned int cap = madara_wakelock_cap_ms(ws->name);
+	unsigned long expires;
+
+	if (!cap)
+		return;
+
+	expires = jiffies + msecs_to_jiffies(cap);
+	if (!expires)
+		expires = 1;
+
+	mod_timer(&ws->timer, expires);
+	ws->timer_expires = expires;
+}
+
+/*
  * The functions below use the observation that each wakeup event starts a
  * period in which the system should not be suspended.  The moment this period
  * will end depends on how the wakeup event is going to be processed after being
@@ -534,24 +577,8 @@ static bool wakeup_source_not_registered(struct wakeup_source *ws)
  * core of the event by incrementing the counter of of wakeup events being
  * processed.
  */
-static bool madara_is_blocked_wakelock(const char *name)
-{
-	if (!name)
-		return false;
-	if (!strcmp(name, "NETLINK") ||
-	    !strcmp(name, "wlan_rx_wake") ||
-	    !strcmp(name, "wlan_ctrl_wake") ||
-	    !strcmp(name, "wlan_wake") ||
-	    !strcmp(name, "SensorService") ||
-	    !strncmp(name, "eventpoll", 9))
-		return true;
-	return false;
-}
-
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
-	if (madara_is_blocked_wakelock(ws->name))
-		return;
 	unsigned int cec;
 
 	if (WARN_ONCE(wakeup_source_not_registered(ws),
@@ -607,6 +634,7 @@ void __pm_stay_awake(struct wakeup_source *ws)
 	wakeup_source_report_event(ws, false);
 	del_timer(&ws->timer);
 	ws->timer_expires = 0;
+	madara_cap_wakeup_source(ws);
 
 	spin_unlock_irqrestore(&ws->lock, flags);
 }
@@ -786,6 +814,7 @@ void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
 {
 	unsigned long flags;
 	unsigned long expires;
+	unsigned int cap;
 
 	if (!ws)
 		return;
@@ -793,6 +822,10 @@ void pm_wakeup_ws_event(struct wakeup_source *ws, unsigned int msec, bool hard)
 	spin_lock_irqsave(&ws->lock, flags);
 
 	wakeup_source_report_event(ws, hard);
+
+	cap = msec ? madara_wakelock_cap_ms(ws->name) : 0;
+	if (cap && msec > cap)
+		msec = cap;
 
 	if (!msec) {
 		wakeup_source_deactivate(ws);

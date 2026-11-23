@@ -195,11 +195,11 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 			pdata2->charging_current_limit = 2000000;
 		}
 	} else if (info->chr_type == POWER_SUPPLY_TYPE_USB_FLOAT) {
-		/* NONSTANDARD_CHARGER */
+		/* NONSTANDARD_CHARGER: 1 A (bukan 500 mA) agar tidak slow charge */
 		pdata->input_current_limit =
-			info->data.usb_charger_current;
+			NON_STD_AC_CHARGER_CURRENT;
 		pdata->charging_current_limit =
-			info->data.usb_charger_current;
+			NON_STD_AC_CHARGER_CURRENT;
 		is_basic = true;
 	}
 

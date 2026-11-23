@@ -58,10 +58,6 @@ static void madara_apply_tweaks(struct work_struct *work)
 	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq", "2300000");
 	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_load", "78");
 
-	/* Charging & JEITA Runtime Enforcement */
-	madara_write_sysfs("/sys/devices/platform/charger/sw_jeita", "0");
-	madara_write_sysfs("/sys/devices/platform/charger/power_supply/mtk-master-charger/input_current_limit", "2400000");
-
 	/* Power Efficient Workqueues */
 	madara_write_sysfs("/sys/module/workqueue/parameters/power_efficient", "Y");
 
