@@ -515,7 +515,7 @@ static bool himax_mcu_sense_off(bool check_en)
 				DATA_LEN_4, tmp_data, 0);
 			goto TRUE_END;
 		} else {
-			/*msleep(10);*/
+			/*usleep_range(4000, 4500);*/
 #if defined(HX_RST_PIN_FUNC)
 			g_core_fp.fp_ic_reset(false, false);
 #else
@@ -3591,11 +3591,11 @@ void himax_mcu_0f_operation(struct work_struct *work)
 
 	g_core_fp.fp_reload_disable(0);
 	g_core_fp.fp_read_FW_ver();
-	/*msleep (10);*/
+	/*usleep_range(4000, 4500);*/
 	g_core_fp.fp_touch_information();
-	/*msleep (10);*/
+	/*usleep_range(4000, 4500);*/
 	g_core_fp.fp_sense_on(0x00);
-	/*msleep (10);*/
+	/*usleep_range(4000, 4500);*/
 	I("%s:End\n", __func__);
 	himax_int_enable(1);
 
@@ -3703,7 +3703,7 @@ void himax_mcu_read_sram_0f(const struct firmware *fw_entry,
 			tmp_addr[1] = addr[1]
 				+ (uint8_t) ((address>>8) & 0x00FF);
 
-		/*msleep (10);*/
+		/*usleep_range(4000, 4500);*/
 	}
 	I("%s,READ Start, start_index = %d\n", __func__, start_index);
 
@@ -3808,7 +3808,7 @@ void himax_mcu_read_all_sram(uint8_t *addr, int read_len)
 		tmp_addr[1] = addr[1] + (uint8_t) ((address>>8) & 0x00FF);
 		tmp_addr[0] = addr[0] + (uint8_t) ((address) & 0x00FF);
 
-		/*msleep (10);*/
+		/*usleep_range(4000, 4500);*/
 	}
 	I("%s,addr[3]=0x%2X,addr[2]=0x%2X,addr[1]=0x%2X,addr[0]=0x%2X\n",
 		__func__,

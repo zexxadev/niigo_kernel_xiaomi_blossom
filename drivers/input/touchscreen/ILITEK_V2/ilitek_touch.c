@@ -220,7 +220,7 @@ static void dma_trigger_reg_setting(u32 reg_dest_addr, u32 flash_start_addr, u32
 	if (ilitek_ice_mode_write(FLASH0_reg_flash_csb, 0x1, 1) < 0)
 		ipio_err("Pull CS High failed\n");
 	/* waiting for CS status done */
-	mdelay(10);
+	udelay(4000);
 }
 
 int ilitek_tddi_move_mp_code_flash(void)
@@ -301,7 +301,7 @@ int ilitek_tddi_move_mp_code_flash(void)
 		if (ilitek_ice_mode_write(FLASH0_reg_flash_csb, 0x1, 1) < 0)
 			ipio_err("Pull CS High failed\n");
 		/* waiting for CS status done */
-		mdelay(10);
+		udelay(4000);
 	}
 
 	if (ilitek_tddi_reset_ctrl(TP_IC_CODE_RST) < 0)

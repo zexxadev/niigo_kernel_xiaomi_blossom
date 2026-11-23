@@ -179,7 +179,7 @@ int32_t Resume_PD(void)
 			return -1;
 		}
 	}
-	msleep(10);
+	usleep_range(4000, 4500);
 
 	NVT_LOG("Resume PD OK\n");
 	return 0;
@@ -906,7 +906,7 @@ int32_t nvt_check_flash_end_flag(void)
 		NVT_ERR("write unlock error!!(%d)\n", ret);
 		return ret;
 	}
-	msleep(10);
+	usleep_range(4000, 4500);
 
 	//Step 4 : Flash Read Command
 	buf[0] = 0x00;
@@ -921,7 +921,7 @@ int32_t nvt_check_flash_end_flag(void)
 		NVT_ERR("write Read Command error!!(%d)\n", ret);
 		return ret;
 	}
-	msleep(10);
+	usleep_range(4000, 4500);
 
 	// Check 0xAA (Read Command)
 	buf[0] = 0x00;
@@ -936,7 +936,7 @@ int32_t nvt_check_flash_end_flag(void)
 		return -1;
 	}
 
-	msleep(10);
+	usleep_range(4000, 4500);
 
 	//Step 5 : Read Flash Data
 	buf[0] = 0xFF;
@@ -947,7 +947,7 @@ int32_t nvt_check_flash_end_flag(void)
 		NVT_ERR("change index error!! (%d)\n", ret);
 		return ret;
 	}
-	msleep(10);
+	usleep_range(4000, 4500);
 
 	// Read Back
 	buf[0] = ts->mmap->READ_FLASH_CHECKSUM_ADDR & 0xFF;

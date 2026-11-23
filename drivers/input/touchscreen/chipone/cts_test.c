@@ -102,7 +102,7 @@ static int set_fw_work_mode(struct cts_device *cts_dev, u8 mode)
     do {
         u8 sys_busy, curr_mode;
 
-        msleep(10);
+        usleep_range(4000, 4500);
 
         ret = cts_fw_reg_readb(cts_dev, CTS_DEVICE_FW_REG_SYS_BUSY,
             &sys_busy);
@@ -734,7 +734,7 @@ static int wait_fw_to_normal_work(struct cts_device *cts_dev)
             }
         }
 
-        mdelay (10);
+        udelay(4000);
     } while (++i < 100);
 
     return -ETIMEDOUT;
@@ -1530,7 +1530,7 @@ int cts_test_int_pin(struct cts_device *cts_dev, struct cts_test_param *param)
         cts_err("Send command WRTITE_INT_HIGH failed %d", ret);
         goto unlock_device;
     }
-    mdelay(10);
+    udelay(4000);
     if (cts_plat_get_int_pin(cts_dev->pdata) == 0) {
         cts_err("INT pin state != HIGH");
         ret = -EFAULT;
@@ -1542,7 +1542,7 @@ int cts_test_int_pin(struct cts_device *cts_dev, struct cts_test_param *param)
         cts_err("Send command WRTITE_INT_LOW failed %d", ret);
         goto exit_int_test;
     }
-    mdelay(10);
+    udelay(4000);
     if (cts_plat_get_int_pin(cts_dev->pdata) != 0) {
         cts_err("INT pin state != LOW");
         ret = -EFAULT;
@@ -1556,7 +1556,7 @@ exit_int_test:
             cts_err("Send command RELASE_INT_TEST failed %d", r);
         }
     }
-    mdelay(10);
+    udelay(4000);
 
 unlock_device:
     cts_unlock_device(cts_dev);

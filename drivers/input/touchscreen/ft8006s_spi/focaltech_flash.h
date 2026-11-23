@@ -1,5 +1,5 @@
 /************************************************************************
-* Copyright (C) 2012-2019, Focaltech Systems (R)£¬All Rights Reserved.
+* Copyright (C) 2012-2019, Focaltech Systems (R)All Rights Reserved.
 * Copyright (C) 2021 XiaoMi, Inc.
 *
 * File Name: focaltech_flash.h
@@ -27,7 +27,7 @@
 #define FTS_ROMBOOT_CMD_SET_PRAM_ADDR_LEN           4
 #define FTS_ROMBOOT_CMD_WRITE                       0xAE
 #define FTS_ROMBOOT_CMD_START_APP                   0x08
-#define FTS_DELAY_PRAMBOOT_START                    10
+#define FTS_DELAY_PRAMBOOT_START                    4
 #define FTS_ROMBOOT_CMD_ECC                         0xCC
 #define FTS_PRAM_SADDR                              0x000000
 #define FTS_DRAM_SADDR                              0xD00000
@@ -85,7 +85,7 @@
 #define FTS_REG_UPGRADE2                            0xBC
 #define FTS_UPGRADE_AA                              0xAA
 #define FTS_UPGRADE_55                              0x55
-#define FTS_DELAY_UPGRADE_AA                        10
+#define FTS_DELAY_UPGRADE_AA                        4
 #define FTS_UPGRADE_LOOP                            30
 #define FTS_HEADER_LEN                              32
 #define FTS_FW_BIN_FILEPATH                         "/sdcard/"

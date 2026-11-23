@@ -368,7 +368,7 @@ static bool hx83102ab_sense_off(bool check_en)
 
 			return true;
 		}
-		/*msleep(10);*/
+		/*usleep_range(4000, 4500);*/
 		usleep_range(5000, 5001);
 #if defined(HX_RST_PIN_FUNC)
 		kp_himax_rst_gpio_set((*kp_private_ts)->rst_gpio, 0);
@@ -724,7 +724,7 @@ static bool hx83102d_sense_off(bool check_en)
 
 			return true;
 		}
-		/*msleep(10);*/
+		/*usleep_range(4000, 4500);*/
 		usleep_range(5000, 5001);
 
 #if defined(HX_RST_PIN_FUNC)
@@ -866,7 +866,7 @@ static bool hx83102e_sense_off(bool check_en)
 			usleep_range(1000, 1001);
 			return true;
 		}
-		/*msleep(10);*/
+		/*usleep_range(4000, 4500);*/
 		usleep_range(5000, 5001);
 #if defined(HX_RST_PIN_FUNC)
 		kp_himax_rst_gpio_set((*kp_private_ts)->rst_gpio, 0);

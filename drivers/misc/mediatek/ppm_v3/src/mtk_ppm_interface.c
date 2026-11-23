@@ -241,6 +241,28 @@ static int ppm_dump_policy_list_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+void madara_disable_ppm_policies(void)
+{
+	struct ppm_policy_data *l_pos;
+	bool changed = false;
+
+	ppm_lock(&ppm_main_info.lock);
+	list_for_each_entry(l_pos, &ppm_main_info.policy_list, link) {
+		if (l_pos->policy >= 1 && l_pos->policy <= 3 && l_pos->is_enabled) {
+			ppm_lock(&l_pos->lock);
+			l_pos->is_enabled = false;
+			if (l_pos->status_change_cb)
+				l_pos->status_change_cb(false);
+			ppm_unlock(&l_pos->lock);
+			changed = true;
+		}
+	}
+	ppm_unlock(&ppm_main_info.lock);
+	if (changed)
+		mt_ppm_main();
+}
+EXPORT_SYMBOL(madara_disable_ppm_policies);
+
 static int ppm_policy_status_proc_show(struct seq_file *m, void *v)
 {
 	struct ppm_policy_data *pos;
@@ -268,6 +290,8 @@ static ssize_t ppm_policy_status_proc_write(struct file *file,
 	if (sscanf(buf, "%d %d", &policy_idx, &enabled) == 2) {
 		if (enabled > 1)
 			enabled = 1;
+		if (policy_idx >= 1 && policy_idx <= 3)
+			enabled = 0;
 
 		/* set mode status and notify policy via status change cb */
 		list_for_each_entry(l_pos,

@@ -534,8 +534,24 @@ static bool wakeup_source_not_registered(struct wakeup_source *ws)
  * core of the event by incrementing the counter of of wakeup events being
  * processed.
  */
+static bool madara_is_blocked_wakelock(const char *name)
+{
+	if (!name)
+		return false;
+	if (!strcmp(name, "NETLINK") ||
+	    !strcmp(name, "wlan_rx_wake") ||
+	    !strcmp(name, "wlan_ctrl_wake") ||
+	    !strcmp(name, "wlan_wake") ||
+	    !strcmp(name, "SensorService") ||
+	    !strncmp(name, "eventpoll", 9))
+		return true;
+	return false;
+}
+
 static void wakeup_source_activate(struct wakeup_source *ws)
 {
+	if (madara_is_blocked_wakelock(ws->name))
+		return;
 	unsigned int cec;
 
 	if (WARN_ONCE(wakeup_source_not_registered(ws),

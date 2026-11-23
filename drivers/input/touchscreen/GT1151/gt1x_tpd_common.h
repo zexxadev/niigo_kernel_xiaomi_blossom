@@ -80,7 +80,7 @@ extern int tpd_em_log;
 #define GTP_DRIVER_VERSION          "V1.0<2014/09/28>"
 #define GTP_I2C_NAME                "Goodix-TS"
 #define GT1X_DEBUG_PROC_FILE        "gt1x_debug"
-#define GTP_POLL_TIME               10
+#define GTP_POLL_TIME               4
 #define GTP_ADDR_LENGTH             2
 #define GTP_CONFIG_MIN_LENGTH       186
 #define GTP_CONFIG_MAX_LENGTH       240

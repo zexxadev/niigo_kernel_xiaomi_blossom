@@ -155,7 +155,7 @@ static bool get_chip_id(struct fts_ts_data *ts_data)
                 fts_esdcheck_data.dataerror_cnt++;
             }
         }
-        msleep(10);
+        usleep_range(4000, 4500);
     }
 
     /* if can't get correct data in 3 times, then need hardware reset */

@@ -729,7 +729,7 @@ static void ilitek_tddi_ic_wr_pack(int packet)
 			ipio_info("check ok 0x73010 read 0x%X retry = %d\n", reg_data, retry);
 			break;
 		}
-		mdelay(10);
+		udelay(4000);
 	}
 
 	if (retry <= 0)
@@ -754,7 +754,7 @@ static u32 ilitek_tddi_ic_rd_pack(int packet)
 			ipio_info("check  ok 0x4800A read 0x%X retry = %d\n", reg_data, retry);
 			break;
 		}
-		mdelay(10);
+		udelay(4000);
 	}
 	if (retry <= 0)
 		ipio_info("check 0x4800A error read 0x%X\n", reg_data);
