@@ -547,3 +547,11 @@ CONFIG_HZ_300=y
 # CONFIG_AUDIT is not set
 # CONFIG_AUDITSYSCALL is not set
 # CONFIG_MMC_PARANOID_SD_INIT is not set
+
+# 5. Simple LMK (Sultan): aktif, tapi tidak agresif
+#    - dipicu hanya saat vmpressure mencapai 100 (kritis), korban dipilih dari adj tertinggi
+#    - MINFREE 64 MiB: tiap reclaim membebaskan secukupnya (default 128)
+#    - TIMEOUT 400 ms: tunggu korban mati sebelum boleh membunuh lagi (default 200)
+CONFIG_ANDROID_SIMPLE_LMK=y
+CONFIG_ANDROID_SIMPLE_LMK_MINFREE=64
+CONFIG_ANDROID_SIMPLE_LMK_TIMEOUT_MSEC=400
