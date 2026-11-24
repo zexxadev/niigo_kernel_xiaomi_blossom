@@ -51,19 +51,32 @@ static void madara_apply_tweaks(struct work_struct *work)
 	madara_write_sysfs("/proc/sys/vm/watermark_scale_factor", "30");
 	madara_write_sysfs("/proc/sys/vm/watermark_boost_factor", "0");
 	madara_write_sysfs("/proc/sys/vm/min_free_kbytes", "16384");
+	/* swap ke ZRAM: jangan baca-depan 8 halaman, hanya menambah latensi */
+	madara_write_sysfs("/proc/sys/vm/page-cluster", "0");
 
-	/* Interactive CPU Boost + Fast Down-Ramp untuk Efisiensi Daya */
+	/*
+	 * schedutil di kernel ini hanya punya up/down_rate_limit_us (tidak ada hispeed_*).
+	 * Tulis ke jalur global dan per-policy (policy0 = LL, policy4 = L); jalur yang
+	 * tidak ada diabaikan begitu saja.
+	 */
 	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us", "500");
 	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us", "2500");
-	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq", "2300000");
-	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_load", "78");
+	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/policy0/schedutil/up_rate_limit_us", "500");
+	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/policy0/schedutil/down_rate_limit_us", "2500");
+	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/policy4/schedutil/up_rate_limit_us", "500");
+	madara_write_sysfs("/sys/devices/system/cpu/cpufreq/policy4/schedutil/down_rate_limit_us", "2500");
 
 	/* Power Efficient Workqueues */
 	madara_write_sysfs("/sys/module/workqueue/parameters/power_efficient", "Y");
 
 	/* Network */
-	madara_write_sysfs("/proc/sys/net/ipv4/tcp_low_latency", "1");
 	madara_write_sysfs("/proc/sys/net/ipv4/tcp_fastopen", "3");
+	/* jangan turunkan cwnd setelah koneksi diam: burst pertama langsung cepat */
+	madara_write_sysfs("/proc/sys/net/ipv4/tcp_slow_start_after_idle", "0");
+	/* jangan pakai metrik lama saat pindah WiFi <-> data seluler */
+	madara_write_sysfs("/proc/sys/net/ipv4/tcp_no_metrics_save", "1");
+	/* atasi PMTU blackhole di jaringan seluler */
+	madara_write_sysfs("/proc/sys/net/ipv4/tcp_mtu_probing", "1");
 
 	madara_pass++;
 	if (madara_pass == 1)
