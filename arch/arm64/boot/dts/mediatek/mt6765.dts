@@ -3529,8 +3529,9 @@ firmware_class.path=/vendor/firmware";
 		max_charger_voltage = <6500000>;
 		min_charger_voltage = <4420000>;
 
-		/* sw jeita */
-		enable_sw_jeita;
+		/* sw jeita: dimatikan (build performa). Proteksi suhu ekstrem tetap aktif lewat
+		 * min_charge_temp / max_charge_temp di bawah. */
+		/* enable_sw_jeita; */
 		jeita_temp_above_t4_cv = <4200000>;
 		jeita_temp_above_t4_cv_lc = <4100000>;
 		jeita_temp_t3_to_t4_cv = <4200000>;
@@ -3566,8 +3567,8 @@ firmware_class.path=/vendor/firmware";
 
 		/* charging current */
 		usb_charger_current = <500000>;
-		ac_charger_current = <2050000>;
-		ac_charger_input_current = <2400000>;
+		ac_charger_current = <3000000>;
+		ac_charger_input_current = <3200000>;
 		charging_host_charger_current = <1500000>;
 
 		/* dynamic mivr */
