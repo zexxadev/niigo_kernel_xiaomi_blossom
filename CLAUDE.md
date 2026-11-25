@@ -24,6 +24,9 @@
 3. **One Subsystem Per Session:** Pick ONE untouched high-impact subsystem per chat, inspect its actual C source on `madaraRikudou`, explain the bottleneck clearly, and deliver ONE complete self-contained Bash script in the same response.
 
 ## Mandatory Bash Script Format
-- Start with: `[ "$(git branch --show-current)" = "madaraRikudou" ] || exit 1`
+- Start the script with exact header lines:
+  `# CLAUDE_MADARA_PATCH`
+  `# COMMIT: exp(<subsystem>): <short description>`
+  `[ "$(git branch --show-current)" = "madaraRikudou" ] || exit 1`
 - Apply edits using embedded `python3 - << 'EOF'` with `assert` checks (avoid fragile multi-line `sed`).
 - End with: `git diff --stat && git diff`
