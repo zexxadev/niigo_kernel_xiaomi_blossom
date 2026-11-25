@@ -6,6 +6,7 @@
 #define pr_fmt(fmt) "simple_lmk: " fmt
 
 #include <linux/freezer.h>
+#include <linux/init.h>
 #include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/moduleparam.h>
@@ -201,16 +202,12 @@ static void set_task_rt_prio(struct task_struct *tsk, int priority)
 static void scan_and_kill(void)
 {
 	static unsigned long last_reclaim;
-	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
-		return;
-	last_reclaim = jiffies;
-
-	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
-		return;
-	last_reclaim = jiffies;
-
 	int i, nr_to_kill, nr_found = 0;
 	unsigned long pages_found;
+
+	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
+		return;
+	last_reclaim = jiffies;
 
 	/*
 	 * Reset nr_victims so the reaper thread and simple_lmk_mm_freed() are
@@ -507,3 +504,9 @@ static const struct kernel_param_ops simple_lmk_init_ops = {
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "lowmemorykiller."
 module_param_cb(minfree, &simple_lmk_init_ops, NULL, 0200);
+
+static int __init simple_lmk_late_init(void)
+{
+	return simple_lmk_init_set(NULL, NULL);
+}
+late_initcall(simple_lmk_late_init);
