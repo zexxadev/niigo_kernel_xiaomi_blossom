@@ -25,6 +25,7 @@
 3. **One Subsystem Per Session:** Pick ONE untouched high-impact subsystem per chat, inspect its actual C source on `madaraRikudou`, explain the bottleneck clearly, and deliver ONE complete self-contained Bash script in the same response.
 
 ## Mandatory Bash Script Format
+Generate a downloadable script.
 - Start the script with exact header lines:
   `# CLAUDE_MADARA_PATCH`
   `# COMMIT: exp(<subsystem>): <short description>`
