@@ -25,6 +25,16 @@
 #include <linux/lz4.h>
 #include <crypto/internal/scompress.h>
 
+/*
+ * Faktor akselerasi kompresi LZ4 untuk jalur tulis zram (swap).
+ * 1 = perilaku bawaan. Nilai lebih besar = lebih cepat melewati data
+ * yang sulit dikompres, rasio sedikit turun. Format output tetap sama,
+ * jadi dekompresi tidak terpengaruh. Runtime: /sys/module/lz4/parameters/accel
+ */
+static int lz4_accel = 2;
+module_param_named(accel, lz4_accel, int, 0644);
+MODULE_PARM_DESC(accel, "LZ4 compression acceleration (1 = default)");
+
 struct lz4_ctx {
 	void *lz4_comp_mem;
 };
@@ -66,8 +76,8 @@ static void lz4_exit(struct crypto_tfm *tfm)
 static int __lz4_compress_crypto(const u8 *src, unsigned int slen,
 				 u8 *dst, unsigned int *dlen, void *ctx)
 {
-	int out_len = LZ4_compress_default(src, dst,
-		slen, *dlen, ctx);
+	int out_len = LZ4_compress_fast(src, dst,
+		slen, *dlen, READ_ONCE(lz4_accel), ctx);
 
 	if (!out_len)
 		return -EINVAL;
