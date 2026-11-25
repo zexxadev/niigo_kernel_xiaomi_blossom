@@ -9,6 +9,7 @@
 ## Repo Exploration Rules (Token-Saving for Full-Repo Hunting)
 1. **Skip Irrelevant Directories:** Avoid scanning `arch/x86`, `arch/arm`, `arch/mips`, `arch/powerpc`, `Documentation/`, `samples/`, `tools/`, or non-Android/PCI drivers. Focus on `kernel/`, `mm/`, `net/`, `block/`, `fs/`, `arch/arm64/`, and `drivers/` (`misc/mediatek/`, `mmc/`, `cpufreq/`, `devfreq/`, `thermal/`, `irqchip/`).
 2. **Hunt Untouched Areas Only:** Do not re-modify features already tuned (CPU/GPU OC, PELT 16ms, UCLAMP, Simple LMK, MGLRU, HZ_300, BLK_WBT, mq-deadline, page_cluster=0, BBR+FQ, tcp_notsent_lowat, BPF_JIT, RT SPI touch, KernelSU/SuSFS) or files listed below unless extending a genuinely new mechanism:
+- `CLAUDE.md.bak`
 - `apply-madara-patches.sh`
 - `arch/arm64/boot/dts/mediatek/mt6765.dts`
 - `arch/arm64/configs/blossom_defconfig`
