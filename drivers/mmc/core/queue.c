@@ -358,6 +358,9 @@ static void mmc_setup_queue(struct mmc_queue *mq, struct mmc_card *card)
 
 	blk_queue_flag_set(QUEUE_FLAG_NONROT, mq->queue);
 	blk_queue_flag_clear(QUEUE_FLAG_ADD_RANDOM, mq->queue);
+	blk_queue_flag_clear(QUEUE_FLAG_IO_STAT, mq->queue);
+	blk_queue_flag_set(QUEUE_FLAG_SAME_COMP, mq->queue);
+	blk_queue_flag_set(QUEUE_FLAG_SAME_FORCE, mq->queue);
 	if (mmc_can_erase(card))
 		mmc_queue_setup_discard(mq->queue, card);
 

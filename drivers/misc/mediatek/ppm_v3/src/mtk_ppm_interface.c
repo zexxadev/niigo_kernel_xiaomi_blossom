@@ -1,3 +1,4 @@
+#include <linux/init.h>
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
@@ -262,6 +263,13 @@ void madara_disable_ppm_policies(void)
 		mt_ppm_main();
 }
 EXPORT_SYMBOL(madara_disable_ppm_policies);
+
+static int __init madara_ppm_late_init(void)
+{
+	madara_disable_ppm_policies();
+	return 0;
+}
+late_initcall(madara_ppm_late_init);
 
 static int ppm_policy_status_proc_show(struct seq_file *m, void *v)
 {
