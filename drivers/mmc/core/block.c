@@ -73,6 +73,17 @@ MODULE_ALIAS("mmc:block");
  */
 #define MMC_BLK_TIMEOUT_MS  (10 * 1000)
 #define MMC_SANITIZE_REQ_TIMEOUT 240000
+
+/*
+ * Runtime-PM autosuspend of the card device. While the card counts as
+ * active, the MSDC host keeps its clocks on and holds
+ * PM_QOS_CPU_DMA_LATENCY at 0 (msdc_runtime_resume), which restricts
+ * cpuidle to the shallowest state. eMMC without MMC_CAP_AGGRESSIVE_PM has
+ * no card-level sleep behind this delay, so a shorter value only gates the
+ * host and drops the PM QoS request earlier.
+ */
+#define MMC_BLK_AUTOSUSPEND_MS		3000
+#define MMC_BLK_AUTOSUSPEND_EMMC_MS	200
 #define MMC_EXTRACT_INDEX_FROM_ARG(x) ((x & 0x00FF0000) >> 16)
 #define MMC_EXTRACT_VALUE_FROM_ARG(x) ((x & 0x0000FF00) >> 8)
 
@@ -3146,7 +3157,9 @@ static int mmc_blk_probe(struct mmc_card *card)
 	/* Add two debugfs entries */
 	mmc_blk_add_debugfs(card, md);
 
-	pm_runtime_set_autosuspend_delay(&card->dev, 3000);
+	pm_runtime_set_autosuspend_delay(&card->dev,
+		(card->host->caps & MMC_CAP_AGGRESSIVE_PM) ?
+		MMC_BLK_AUTOSUSPEND_MS : MMC_BLK_AUTOSUSPEND_EMMC_MS);
 	pm_runtime_use_autosuspend(&card->dev);
 
 	/*
