@@ -993,7 +993,7 @@ int elevator_init_mq(struct request_queue *q)
 	if (unlikely(q->elevator))
 		goto out;
 
-	e = NULL;
+	e = elevator_get(q, "mq-deadline", false);
 	if (!e)
 		goto out;
 

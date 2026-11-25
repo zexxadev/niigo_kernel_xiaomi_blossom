@@ -40,7 +40,7 @@ static void madara_apply_tweaks(struct work_struct *work)
 		madara_disable_ppm_policies();
 
 	/* Storage Read & Low-Latency Block Queue */
-	madara_write_sysfs("/sys/block/mmcblk0/queue/scheduler", "none");
+	madara_write_sysfs("/sys/block/mmcblk0/queue/scheduler", "mq-deadline");
 	madara_write_sysfs("/sys/block/mmcblk0/queue/read_ahead_kb", "128");
 	madara_write_sysfs("/sys/block/mmcblk0/queue/iostats", "0");
 	madara_write_sysfs("/sys/block/mmcblk0/queue/add_random", "0");
