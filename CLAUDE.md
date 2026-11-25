@@ -25,6 +25,7 @@
 - `drivers/mmc/core/queue.c`
 - `drivers/power/supply/mtk_basic_charger.c`
 - `kernel/sched/cpufreq_schedutil.c`
+- `kernel/sched/fair.c`
 - `madara-fix.sh`
 - `mm/page-writeback.c`
 - `mm/vmstat.c`
