@@ -48,19 +48,6 @@ enum _ex_mode {
     MODE_CHARGER,
 };
 
-/*
- * madara: report rate touch (register 0x88, satuan 10 Hz pada firmware
- * FocalTech yang mendukungnya). Tidak semua firmware FT8006S menerima
- * register ini, jadi setiap penulisan diverifikasi dengan baca-balik; jika
- * tidak cocok, nilai asli dikembalikan dan perintah gagal dengan -EIO.
- */
-#define FTS_REG_REPORT_RATE         0x88
-#define FTS_REPORT_RATE_MAX         30
-
-static u8 fts_rr_user;              /* nilai yang diminta user, 0 = tidak diatur */
-static u8 fts_rr_default;           /* nilai asli firmware sebelum diubah */
-static bool fts_rr_have_default;
-
 /*****************************************************************************
 * 4.Static variables
 *****************************************************************************/
@@ -266,107 +253,10 @@ static DEVICE_ATTR(fts_cover_mode, S_IRUGO | S_IWUSR,
 static DEVICE_ATTR(fts_charger_mode, S_IRUGO | S_IWUSR,
                    fts_charger_mode_show, fts_charger_mode_store);
 
-static int fts_report_rate_set(u8 val)
-{
-    u8 rb = 0;
-    int ret;
-
-    ret = fts_write_reg(FTS_REG_REPORT_RATE, val);
-    if (ret < 0)
-        return ret;
-
-    ret = fts_read_reg(FTS_REG_REPORT_RATE, &rb);
-    if (ret < 0)
-        return ret;
-
-    return (rb == val) ? 0 : -EIO;
-}
-
-static ssize_t fts_report_rate_show(
-    struct device *dev, struct device_attribute *attr, char *buf)
-{
-    int count = 0;
-    u8 val = 0;
-    struct fts_ts_data *ts_data = fts_data;
-    struct input_dev *input_dev = ts_data->input_dev;
-
-    mutex_lock(&input_dev->mutex);
-    if (ts_data->suspended) {
-        count = scnprintf(buf, PAGE_SIZE, "suspended\n");
-    } else if (fts_read_reg(FTS_REG_REPORT_RATE, &val) < 0) {
-        count = scnprintf(buf, PAGE_SIZE, "read fail\n");
-    } else {
-        count = scnprintf(buf, PAGE_SIZE,
-                          "Report Rate Reg(0x88):%d\nRequested:%d\nFirmware default:%d\n",
-                          val, fts_rr_user,
-                          fts_rr_have_default ? fts_rr_default : -1);
-    }
-    mutex_unlock(&input_dev->mutex);
-
-    return count;
-}
-
-/*
- * echo N > fts_report_rate   : tulis register 0x88 = N (1..30), diverifikasi
- * echo 0 > fts_report_rate   : kembalikan ke nilai asli firmware
- * Nilai yang diminta dipulihkan otomatis setelah reset/resume (tidak
- * bertahan setelah reboot).
- */
-static ssize_t fts_report_rate_store(
-    struct device *dev,
-    struct device_attribute *attr, const char *buf, size_t count)
-{
-    int ret = 0;
-    u8 cur = 0;
-    unsigned long req = 0;
-    struct fts_ts_data *ts_data = fts_data;
-    struct input_dev *input_dev = ts_data->input_dev;
-
-    if (kstrtoul(buf, 0, &req) || req > FTS_REPORT_RATE_MAX)
-        return -EINVAL;
-
-    mutex_lock(&input_dev->mutex);
-
-    if (ts_data->suspended) {
-        ret = -EAGAIN;
-        goto out;
-    }
-
-    if (!fts_rr_have_default) {
-        ret = fts_read_reg(FTS_REG_REPORT_RATE, &cur);
-        if (ret < 0)
-            goto out;
-        fts_rr_default = cur;
-        fts_rr_have_default = true;
-    }
-
-    if (req == 0) {
-        ret = fts_report_rate_set(fts_rr_default);
-        if (!ret)
-            fts_rr_user = 0;
-    } else {
-        ret = fts_report_rate_set((u8)req);
-        if (ret)
-            fts_write_reg(FTS_REG_REPORT_RATE, fts_rr_default);
-        else
-            fts_rr_user = (u8)req;
-    }
-
-out:
-    mutex_unlock(&input_dev->mutex);
-    if (ret)
-        return ret;
-    return count;
-}
-
-static DEVICE_ATTR(fts_report_rate, S_IRUGO | S_IWUSR,
-                   fts_report_rate_show, fts_report_rate_store);
-
 static struct attribute *fts_touch_mode_attrs[] = {
     &dev_attr_fts_glove_mode.attr,
     &dev_attr_fts_cover_mode.attr,
     &dev_attr_fts_charger_mode.attr,
-    &dev_attr_fts_report_rate.attr,
     NULL,
 };
 
@@ -386,10 +276,6 @@ int fts_ex_mode_recovery(struct fts_ts_data *ts_data)
 
     if (ts_data->charger_mode) {
         fts_ex_mode_switch(MODE_CHARGER, ENABLE);
-    }
-
-    if (fts_rr_user) {
-        fts_write_reg(FTS_REG_REPORT_RATE, fts_rr_user);
     }
 
     return 0;

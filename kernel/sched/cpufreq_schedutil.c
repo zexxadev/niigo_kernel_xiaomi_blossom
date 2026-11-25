@@ -17,6 +17,15 @@
 #include <trace/events/power.h>
 #include "cpufreq_schedutil.h"
 
+/*
+ * MTK cpufreq reports transition_latency = 1000 ns, so the generic default
+ * from cpufreq_policy_transition_delay_us() collapses to 1 us, i.e. no rate
+ * limiting at all. Use a short up delay and a longer down dwell (~3 ticks
+ * at HZ=300) so frequency does not yo-yo between game frames.
+ */
+#define SUGOV_DEFAULT_UP_RATE_LIMIT_US		500U
+#define SUGOV_DEFAULT_DOWN_RATE_LIMIT_US	10000U
+
 void (*cpufreq_notifier_fp)(int cluster_id, unsigned long freq);
 EXPORT_SYMBOL(cpufreq_notifier_fp);
 
@@ -561,9 +570,10 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	}
 
 #ifdef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
-	sugov_update_next_freq(sg_policy, time, next_f);
-	mt_cpufreq_set_by_wfi_load_cluster(cid, next_f);
-	policy->cur = next_f;
+	if (sugov_update_next_freq(sg_policy, time, next_f)) {
+		mt_cpufreq_set_by_wfi_load_cluster(cid, next_f);
+		policy->cur = next_f;
+	}
 #else
 
 	/*
@@ -629,6 +639,8 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 
 	raw_spin_lock(&sg_policy->update_lock);
 
+	next_f = sg_policy->next_freq;
+
 	sugov_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
@@ -640,9 +652,9 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 		next_f = sugov_next_freq_shared(sg_cpu, time);
 
 #ifdef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
-		sugov_update_next_freq(sg_policy, time, next_f);
-		next_f = mt_cpufreq_find_close_freq(cid, next_f);
-		mt_cpufreq_set_by_wfi_load_cluster(cid, next_f);
+		/* next_f is already snapped to an OPP by sugov_next_freq_shared() */
+		if (sugov_update_next_freq(sg_policy, time, next_f))
+			mt_cpufreq_set_by_wfi_load_cluster(cid, next_f);
 #else
 		if (sg_policy->policy->fast_switch_enabled)
 			sugov_fast_switch(sg_policy, time, next_f);
@@ -932,8 +944,12 @@ static int sugov_init(struct cpufreq_policy *policy)
 		goto stop_kthread;
 	}
 
-	tunables->up_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
-	tunables->down_rate_limit_us = cpufreq_policy_transition_delay_us(policy);
+	tunables->up_rate_limit_us = max_t(unsigned int,
+			cpufreq_policy_transition_delay_us(policy),
+			SUGOV_DEFAULT_UP_RATE_LIMIT_US);
+	tunables->down_rate_limit_us = max_t(unsigned int,
+			cpufreq_policy_transition_delay_us(policy),
+			SUGOV_DEFAULT_DOWN_RATE_LIMIT_US);
 
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;

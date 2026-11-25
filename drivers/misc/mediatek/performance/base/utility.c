@@ -3,7 +3,6 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
-#include <linux/gfp.h>
 #include <linux/uaccess.h>
 #include "mtk_perfmgr_internal.h"
 #ifdef CONFIG_TRACING
