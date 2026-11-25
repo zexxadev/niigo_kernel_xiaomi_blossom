@@ -24,6 +24,7 @@
 - `drivers/power/supply/mtk_basic_charger.c`
 - `kernel/sched/cpufreq_schedutil.c`
 - `madara-fix.sh`
+- `mm/page-writeback.c`
 
 3. **One Subsystem Per Session:** Pick ONE untouched high-impact subsystem per chat, inspect its actual C source on `madaraRikudou`, explain the bottleneck clearly, and deliver ONE complete self-contained Bash script in the same response.
 
