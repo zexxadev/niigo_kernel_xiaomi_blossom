@@ -358,6 +358,12 @@ static void mmc_setup_queue(struct mmc_queue *mq, struct mmc_card *card)
 
 	blk_queue_flag_set(QUEUE_FLAG_NONROT, mq->queue);
 	blk_queue_flag_clear(QUEUE_FLAG_ADD_RANDOM, mq->queue);
+	/*
+	 * Skip per-request I/O accounting: on 4.19 blk-mq it walks all busy
+	 * tags (blk_mq_in_flight) on every start/done, which is pure CPU
+	 * overhead on slow A53 cores. Re-enable via queue/iostats if needed.
+	 */
+	blk_queue_flag_clear(QUEUE_FLAG_IO_STAT, mq->queue);
 	if (mmc_can_erase(card))
 		mmc_queue_setup_discard(mq->queue, card);
 
