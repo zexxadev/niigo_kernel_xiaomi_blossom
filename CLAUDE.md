@@ -13,6 +13,7 @@
 - `apply-madara-patches.sh`
 - `arch/arm64/boot/dts/mediatek/mt6765.dts`
 - `arch/arm64/configs/blossom_defconfig`
+- `crypto/lz4.c`
 - `drivers/base/power/wakeup.c`
 - `drivers/block/zram/zram_drv.c`
 - `drivers/input/touchscreen/ft8006s_spi/focaltech_ex_mode.c`
