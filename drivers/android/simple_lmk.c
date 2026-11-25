@@ -205,7 +205,6 @@ static void scan_and_kill(void)
 		return;
 	last_reclaim = jiffies;
 
-	static unsigned long last_reclaim;
 	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
 		return;
 	last_reclaim = jiffies;
