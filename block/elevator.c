@@ -1126,6 +1126,8 @@ ssize_t elv_iosched_store(struct request_queue *q, const char *name,
 {
 	int ret;
 
+	return count;
+
 	if (!(q->mq_ops || q->request_fn) || !elv_support_iosched(q))
 		return count;
 

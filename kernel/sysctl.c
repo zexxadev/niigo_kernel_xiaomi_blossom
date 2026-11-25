@@ -1317,6 +1317,16 @@ static struct ctl_table kern_table[] = {
 	{ }
 };
 
+static int madara_sysctl_lock_handler(struct ctl_table *table, int write,
+				      void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	if (write) {
+		*ppos += *lenp;
+		return 0;
+	}
+	return proc_dointvec(table, write, buffer, lenp, ppos);
+}
+
 static struct ctl_table vm_table[] = {
 	{
 		.procname	= "overcommit_memory",
@@ -1443,7 +1453,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &vm_swappiness,
 		.maxlen		= sizeof(vm_swappiness),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
+		.proc_handler	= madara_sysctl_lock_handler,
 		.extra1		= &zero,
 		.extra2		= &two_hundred,
 	},
@@ -1537,7 +1547,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &min_free_kbytes,
 		.maxlen		= sizeof(min_free_kbytes),
 		.mode		= 0644,
-		.proc_handler	= min_free_kbytes_sysctl_handler,
+		.proc_handler	= madara_sysctl_lock_handler,
 		.extra1		= &zero,
 	},
 	{
@@ -1604,7 +1614,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &sysctl_vfs_cache_pressure,
 		.maxlen		= sizeof(sysctl_vfs_cache_pressure),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= madara_sysctl_lock_handler,
 		.extra1		= &zero,
 	},
 #ifdef HAVE_ARCH_PICK_MMAP_LAYOUT
