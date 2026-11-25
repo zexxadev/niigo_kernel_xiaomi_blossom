@@ -2454,6 +2454,7 @@ firmware_class.path=/vendor/firmware";
 	};
 
 	spi3: spi@11013000 {
+	mediatek,kthread-rt;
 		compatible = "mediatek,mt6765-spi";
 		mediatek,pad-select = <0>;
 		reg = <0 0x11013000 0 0x1000>;
@@ -3399,10 +3400,10 @@ firmware_class.path=/vendor/firmware";
 
 		/* charging current */
 		usb_charger_current = <500000>;
-		ac_charger_current = <1500000>;
+		ac_charger_current = <2050000>;
 		ac_charger_input_current = <3200000>;
-		non_std_ac_charger_current = <1020000>;
-		charging_host_charger_current = <1500000>;
+		non_std_ac_charger_current = <2000000>;
+		charging_host_charger_current = <2000000>;
 		ta_ac_charger_current = <3000000>;
 		pd_charger_current = <500000>;
 
@@ -3525,7 +3526,7 @@ firmware_class.path=/vendor/firmware";
 		charger_configuration= <0>;
 
 		/* common */
-		battery_cv = <4368000>;
+		battery_cv = <4400000>;
 		max_charger_voltage = <6500000>;
 		min_charger_voltage = <4420000>;
 
@@ -3566,9 +3567,9 @@ firmware_class.path=/vendor/firmware";
 
 		/* charging current */
 		usb_charger_current = <500000>;
-		ac_charger_current = <2048000>;
-		ac_charger_input_current = <2180000>;
-		charging_host_charger_current = <1500000>;
+		ac_charger_current = <2050000>;
+		ac_charger_input_current = <2400000>;
+		charging_host_charger_current = <2000000>;
 
 		/* dynamic mivr */
 		/* enable_dynamic_mivr; */

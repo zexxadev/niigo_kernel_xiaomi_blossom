@@ -90,7 +90,7 @@ static unsigned long find_victims(int *vindex)
 		 */
 		sig = tsk->signal;
 		adj = READ_ONCE(sig->oom_score_adj);
-		if (adj < 0 ||
+		if (adj < 750 ||
 		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
 		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING))
 			continue;
@@ -200,6 +200,11 @@ static void set_task_rt_prio(struct task_struct *tsk, int priority)
 
 static void scan_and_kill(void)
 {
+	static unsigned long last_reclaim;
+	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
+		return;
+	last_reclaim = jiffies;
+
 	int i, nr_to_kill, nr_found = 0;
 	unsigned long pages_found;
 
