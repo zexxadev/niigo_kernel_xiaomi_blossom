@@ -42,9 +42,11 @@
 #include "internal.h"
 
 /*
- * Sleep at most 200ms at a time in balance_dirty_pages().
+ * Sleep at most 100ms at a time in balance_dirty_pages().
+ * Halved from 200ms: a throttled app thread (fsync/SharedPreferences) on a
+ * 2GB eMMC device must not stall the UI for a whole frame burst.
  */
-#define MAX_PAUSE		max(HZ/5, 1)
+#define MAX_PAUSE		max(HZ/10, 1)
 
 /*
  * Try to keep balance_dirty_pages() call intervals higher than this many pages
@@ -98,14 +100,14 @@ unsigned long vm_dirty_bytes;
 /*
  * The interval between `kupdate'-style writebacks
  */
-unsigned int dirty_writeback_interval = 5 * 100; /* centiseconds */
+unsigned int dirty_writeback_interval = 3 * 100; /* centiseconds */
 
 EXPORT_SYMBOL_GPL(dirty_writeback_interval);
 
 /*
  * The longest time for which data is allowed to remain dirty
  */
-unsigned int dirty_expire_interval = 30 * 100; /* centiseconds */
+unsigned int dirty_expire_interval = 15 * 100; /* centiseconds */
 
 /*
  * Flag that makes the machine dump writes/reads and block dirtyings.
