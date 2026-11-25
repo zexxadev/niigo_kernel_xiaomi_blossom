@@ -1649,6 +1649,8 @@ static int fts_ts_probe(struct spi_device *spi)
     spi->mode = SPI_MODE_0;
 	if (spi->max_speed_hz < 10000000)
 		spi->max_speed_hz = 10000000;
+	if (spi->max_speed_hz < 10000000)
+		spi->max_speed_hz = 10000000;
 
     spi->bits_per_word = 8;
     ret = spi_setup(spi);
