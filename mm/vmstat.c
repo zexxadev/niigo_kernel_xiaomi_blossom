@@ -1751,7 +1751,13 @@ static const struct seq_operations vmstat_op = {
 
 #ifdef CONFIG_SMP
 static DEFINE_PER_CPU(struct delayed_work, vmstat_work);
-int sysctl_stat_interval __read_mostly = HZ;
+/*
+ * 2s instead of 1s: vmstat_update() and the shepherd re-arm every
+ * stat_interval on each busy CPU. Halving the rate cuts timer/workqueue
+ * wakeups on the 8x Cortex-A53. Per-CPU diffs stay bounded by
+ * stat_threshold, so global counters never drift past the existing limit.
+ */
+int sysctl_stat_interval __read_mostly = 2 * HZ;
 
 #ifdef CONFIG_PROC_FS
 static void refresh_vm_stats(struct work_struct *work)
