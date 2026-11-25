@@ -20,11 +20,13 @@
 - `drivers/misc/mediatek/base/power/ppm_v3/src/mtk_ppm_interface.c`
 - `drivers/misc/mediatek/performance/base/utility.c`
 - `drivers/misc/mediatek/ppm_v3/src/mtk_ppm_interface.c`
+- `drivers/mmc/core/block.c`
 - `drivers/mmc/core/queue.c`
 - `drivers/power/supply/mtk_basic_charger.c`
 - `kernel/sched/cpufreq_schedutil.c`
 - `madara-fix.sh`
 - `mm/page-writeback.c`
+- `mm/vmstat.c`
 
 3. **One Subsystem Per Session:** Pick ONE untouched high-impact subsystem per chat, inspect its actual C source on `madaraRikudou`, explain the bottleneck clearly, and deliver ONE complete self-contained Bash script in the same response.
 
