@@ -20,6 +20,7 @@
 - `drivers/misc/mediatek/base/power/ppm_v3/src/mtk_ppm_interface.c`
 - `drivers/misc/mediatek/performance/base/utility.c`
 - `drivers/misc/mediatek/ppm_v3/src/mtk_ppm_interface.c`
+- `drivers/mmc/core/queue.c`
 - `drivers/power/supply/mtk_basic_charger.c`
 - `kernel/sched/cpufreq_schedutil.c`
 - `madara-fix.sh`
