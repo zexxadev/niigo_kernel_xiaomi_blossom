@@ -41,3 +41,9 @@ Generate a downloadable script.
   `[ "$(git branch --show-current)" = "madaraRikudou" ] || exit 1`
 - Apply edits using embedded `python3 - << 'EOF'` with `assert` checks (including verifying any `MADARA_LOCK_START`..`MADARA_LOCK_END` blocks stay unchanged when touching an existing file; avoid fragile multi-line `sed`).
 - End with: `git diff --stat && git diff`
+
+## Experimental Notes & Safe Improvisation Guide (MT6765 / Blossom)
+A previous experimental build hung at the Redmi boot logo after simultaneous changes to `cpufreq_schedutil.c`, `mmc/core/block.c`, and `base/power/wakeup.c`. Those three files were reset to the `0ee1451` baseline as a clean starting point. You are encouraged to continue experimenting and improvising on these subsystems with the following hardware notes in mind:
+- **`kernel/sched/cpufreq_schedutil.c`:** Feel free to tune rate limits (`up_rate_limit_us` / `down_rate_limit_us`) and frequency scaling behavior, while preserving OPP table snapping via `mt_cpufreq_find_close_freq()` before `mt_cpufreq_set_by_wfi_load_cluster()` so MediaTek SSPM receives valid discrete OPP frequencies.
+- **`drivers/mmc/core/block.c`:** Feel free to explore eMMC runtime PM and block queue optimizations, while keeping autosuspend delays conservative enough (avoid overly aggressive sub-second values like `200ms`) so `mtk-msdc` completes early partition mounts cleanly.
+- **`drivers/base/power/wakeup.c`:** Feel free to experiment with wakelock timeout capping for idle power savings, while ensuring `mod_timer` / `ws->timer` adjustments guard against inactive or early-boot wakeup sources.
