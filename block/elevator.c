@@ -1085,7 +1085,7 @@ fail_init:
 /*
  * Switch this queue to the given IO scheduler.
  */
-static int __elevator_change(struct request_queue *q, const char *name)
+static int __maybe_unused __elevator_change(struct request_queue *q, const char *name)
 {
 	char elevator_name[ELV_NAME_MAX];
 	struct elevator_type *e;

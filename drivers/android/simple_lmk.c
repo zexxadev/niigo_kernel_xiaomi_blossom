@@ -70,7 +70,7 @@ static unsigned long get_total_mm_pages(struct mm_struct *mm)
 	return pages;
 }
 
-static unsigned long find_victims_min_adj(int *vindex, int min_adj_limit)
+static unsigned long find_victims(int *vindex)
 {
 	short i, min_adj = SHRT_MAX, max_adj = 0;
 	unsigned long pages_found = 0;
@@ -91,7 +91,7 @@ static unsigned long find_victims_min_adj(int *vindex, int min_adj_limit)
 		 */
 		sig = tsk->signal;
 		adj = READ_ONCE(sig->oom_score_adj);
-		if (adj < min_adj_limit ||
+		if (adj < 300 ||
 		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
 		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING))
 			continue;
@@ -212,10 +212,8 @@ static void scan_and_kill(void)
 	nr_victims = 0;
 	write_unlock(&mm_free_lock);
 
-	/* Populate the victims array: cached (>=750) first, fallback background (>=200) */
-	pages_found = find_victims_min_adj(&nr_found, 750);
-	if (!pages_found)
-		pages_found = find_victims_min_adj(&nr_found, 200);
+	/* Populate the victims array from highest adj down to 300 (protects perceptible <=200) */
+	pages_found = find_victims(&nr_found);
 	if (unlikely(!nr_found)) {
 		pr_err_ratelimited("No processes available to kill!\n");
 		return;
