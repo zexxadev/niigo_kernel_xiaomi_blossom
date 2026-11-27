@@ -70,7 +70,7 @@ static unsigned long get_total_mm_pages(struct mm_struct *mm)
 	return pages;
 }
 
-static unsigned long find_victims(int *vindex)
+static unsigned long find_victims_min_adj(int *vindex, int min_adj_limit)
 {
 	short i, min_adj = SHRT_MAX, max_adj = 0;
 	unsigned long pages_found = 0;
@@ -91,7 +91,7 @@ static unsigned long find_victims(int *vindex)
 		 */
 		sig = tsk->signal;
 		adj = READ_ONCE(sig->oom_score_adj);
-		if (adj < 750 ||
+		if (adj < min_adj_limit ||
 		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
 		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING))
 			continue;
@@ -201,13 +201,8 @@ static void set_task_rt_prio(struct task_struct *tsk, int priority)
 
 static void scan_and_kill(void)
 {
-	static unsigned long last_reclaim;
 	int i, nr_to_kill, nr_found = 0;
 	unsigned long pages_found;
-
-	if (last_reclaim && time_before(jiffies, last_reclaim + msecs_to_jiffies(1500)))
-		return;
-	last_reclaim = jiffies;
 
 	/*
 	 * Reset nr_victims so the reaper thread and simple_lmk_mm_freed() are
@@ -217,8 +212,10 @@ static void scan_and_kill(void)
 	nr_victims = 0;
 	write_unlock(&mm_free_lock);
 
-	/* Populate the victims array with tasks sorted by adj and then size */
-	pages_found = find_victims(&nr_found);
+	/* Populate the victims array: cached (>=750) first, fallback background (>=200) */
+	pages_found = find_victims_min_adj(&nr_found, 750);
+	if (!pages_found)
+		pages_found = find_victims_min_adj(&nr_found, 200);
 	if (unlikely(!nr_found)) {
 		pr_err_ratelimited("No processes available to kill!\n");
 		return;
